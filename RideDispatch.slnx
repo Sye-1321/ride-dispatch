@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RideDispatch.Api/RideDispatch.Api.csproj" />
+    <Project Path="src/RideDispatch.Application/RideDispatch.Application.csproj" />
+    <Project Path="src/RideDispatch.Domain/RideDispatch.Domain.csproj" />
+    <Project Path="src/RideDispatch.Infrastructure/RideDispatch.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RideDispatch.IntegrationTests/RideDispatch.IntegrationTests.csproj" />
+    <Project Path="tests/RideDispatch.UnitTests/RideDispatch.UnitTests.csproj" />
+  </Folder>
+</Solution>

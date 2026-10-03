@@ -1,0 +1,8 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\RideDispatch.Application\RideDispatch.Application.csproj" />
+    <ProjectReference Include="..\RideDispatch.Domain\RideDispatch.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
