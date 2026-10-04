@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using RideDispatch.Application.DriverFinancialStanding;
 using RideDispatch.Application.DriverLocations;
 using RideDispatch.Application.Drivers;
 using RideDispatch.Application.Vehicles;
@@ -28,6 +29,8 @@ builder.Services.AddScoped<GetDriverVehicle>();
 builder.Services.AddScoped<UpdateDriverLocation>();
 builder.Services.AddScoped<GetDriverLocation>();
 builder.Services.AddScoped<FindNearbyDrivers>();
+builder.Services.AddScoped<UpdateDriverFinancialStanding>();
+builder.Services.AddScoped<GetDriverFinancialStanding>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()

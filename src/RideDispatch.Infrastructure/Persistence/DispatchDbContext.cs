@@ -13,6 +13,9 @@ public sealed class DispatchDbContext(DbContextOptions<DispatchDbContext> option
 
     public DbSet<DriverLocationRecord> DriverLocations => Set<DriverLocationRecord>();
 
+    public DbSet<DriverFinancialStandingRecord> DriverFinancialStandings =>
+        Set<DriverFinancialStandingRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresExtension("postgis");
