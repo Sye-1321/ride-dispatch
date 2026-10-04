@@ -4,4 +4,15 @@ A focused ASP.NET Core backend for correct, explainable ride-to-driver allocatio
 
 Status: early implementation / foundation stage.
 
-Target stack: .NET 10 / ASP.NET Core.
+Target stack: .NET 10 / ASP.NET Core / PostgreSQL / PostGIS.
+
+## Local development
+
+PostgreSQL with PostGIS is required.
+
+```powershell
+docker compose up -d database
+dotnet tool restore
+dotnet ef database update --project src/RideDispatch.Infrastructure --startup-project src/RideDispatch.Api
+dotnet run --project src/RideDispatch.Api
+```

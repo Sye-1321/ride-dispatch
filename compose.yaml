@@ -1,0 +1,19 @@
+services:
+  database:
+    image: postgis/postgis:18-3.6
+    environment:
+      POSTGRES_DB: ride_dispatch
+      POSTGRES_USER: ride_dispatch
+      POSTGRES_PASSWORD: ride_dispatch
+    ports:
+      - "5432:5432"
+    volumes:
+      - database_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ride_dispatch -d ride_dispatch"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  database_data:
