@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using RideDispatch.Application.DriverLocations;
 using RideDispatch.Application.Drivers;
 using RideDispatch.Application.Vehicles;
 using RideDispatch.Infrastructure.Persistence;
@@ -25,6 +26,7 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString, npgsql => npgsql.UseNetTopologySuite()));
         services.AddScoped<IDriverStore, DriverStore>();
         services.AddScoped<IVehicleStore, VehicleStore>();
+        services.AddScoped<IDriverLocationStore, DriverLocationStore>();
 
         return services;
     }
