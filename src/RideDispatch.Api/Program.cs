@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using RideDispatch.Application.Drivers;
+using RideDispatch.Application.Vehicles;
 using RideDispatch.Infrastructure;
 using RideDispatch.Infrastructure.Persistence;
 
@@ -21,6 +22,8 @@ builder.Services.AddScoped<GetDriver>();
 builder.Services.AddScoped<ListDrivers>();
 builder.Services.AddScoped<UpdateDriverApproval>();
 builder.Services.AddScoped<UpdateDriverOperationalStatus>();
+builder.Services.AddScoped<RegisterVehicle>();
+builder.Services.AddScoped<GetDriverVehicle>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()
