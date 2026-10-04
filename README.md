@@ -2,7 +2,9 @@
 
 A focused ASP.NET Core backend for correct, explainable ride-to-driver allocation.
 
-Status: early implementation / foundation stage.
+Status: early implementation.
+
+Current scope: driver approval and operational availability.
 
 Target stack: .NET 10 / ASP.NET Core / PostgreSQL / PostGIS.
 

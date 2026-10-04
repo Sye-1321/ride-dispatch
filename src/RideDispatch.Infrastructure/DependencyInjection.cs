@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using RideDispatch.Application.Drivers;
 using RideDispatch.Infrastructure.Persistence;
 
 namespace RideDispatch.Infrastructure;
@@ -21,6 +22,7 @@ public static class DependencyInjection
 
         services.AddDbContext<DispatchDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql => npgsql.UseNetTopologySuite()));
+        services.AddScoped<IDriverStore, DriverStore>();
 
         return services;
     }

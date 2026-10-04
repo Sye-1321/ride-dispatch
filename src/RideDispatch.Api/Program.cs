@@ -1,12 +1,26 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using RideDispatch.Application.Drivers;
 using RideDispatch.Infrastructure;
 using RideDispatch.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(
+            new JsonStringEnumConverter(
+                JsonNamingPolicy.SnakeCaseUpper,
+                allowIntegerValues: false)));
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<CreateDriver>();
+builder.Services.AddScoped<GetDriver>();
+builder.Services.AddScoped<ListDrivers>();
+builder.Services.AddScoped<UpdateDriverApproval>();
+builder.Services.AddScoped<UpdateDriverOperationalStatus>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()
