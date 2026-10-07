@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using RideDispatch.Domain.Drivers;
+using RideDispatch.Domain.Passengers;
+using RideDispatch.Domain.RideRequests;
 using RideDispatch.Domain.Vehicles;
 using RideDispatch.Infrastructure.Persistence.Models;
 
@@ -10,6 +12,10 @@ public sealed class DispatchDbContext(DbContextOptions<DispatchDbContext> option
     public DbSet<Driver> Drivers => Set<Driver>();
 
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
+
+    public DbSet<Passenger> Passengers => Set<Passenger>();
+
+    public DbSet<RideRequest> RideRequests => Set<RideRequest>();
 
     public DbSet<DriverLocationRecord> DriverLocations => Set<DriverLocationRecord>();
 

@@ -4,7 +4,7 @@ A focused ASP.NET Core backend for correct, explainable ride-to-driver allocatio
 
 Status: early implementation.
 
-Current scope: driver lifecycle, registered vehicles, PostGIS-backed locations, and commission standing.
+Current scope: driver operating state, vehicles, PostGIS locations, commission standing, passengers, and ride requests.
 
 Target stack: .NET 10 / ASP.NET Core / PostgreSQL / PostGIS.
 

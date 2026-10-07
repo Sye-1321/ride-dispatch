@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using RideDispatch.Application.DriverFinancialStanding;
 using RideDispatch.Application.DriverLocations;
 using RideDispatch.Application.Drivers;
+using RideDispatch.Application.Passengers;
+using RideDispatch.Application.RideRequests;
 using RideDispatch.Application.Vehicles;
 using RideDispatch.Infrastructure;
 using RideDispatch.Infrastructure.Persistence;
@@ -31,6 +33,11 @@ builder.Services.AddScoped<GetDriverLocation>();
 builder.Services.AddScoped<FindNearbyDrivers>();
 builder.Services.AddScoped<UpdateDriverFinancialStanding>();
 builder.Services.AddScoped<GetDriverFinancialStanding>();
+builder.Services.AddScoped<CreatePassenger>();
+builder.Services.AddScoped<GetPassenger>();
+builder.Services.AddScoped<CreateRideRequest>();
+builder.Services.AddScoped<GetRideRequest>();
+builder.Services.AddScoped<ListRideRequests>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()

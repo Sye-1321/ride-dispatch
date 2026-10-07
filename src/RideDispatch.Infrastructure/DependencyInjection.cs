@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using RideDispatch.Application.DriverFinancialStanding;
 using RideDispatch.Application.DriverLocations;
 using RideDispatch.Application.Drivers;
+using RideDispatch.Application.Passengers;
+using RideDispatch.Application.RideRequests;
 using RideDispatch.Application.Vehicles;
 using RideDispatch.Infrastructure.Persistence;
 
@@ -29,6 +31,8 @@ public static class DependencyInjection
         services.AddScoped<IVehicleStore, VehicleStore>();
         services.AddScoped<IDriverLocationStore, DriverLocationStore>();
         services.AddScoped<IDriverFinancialStandingStore, DriverFinancialStandingStore>();
+        services.AddScoped<IPassengerStore, PassengerStore>();
+        services.AddScoped<IRideRequestStore, RideRequestStore>();
 
         return services;
     }
