@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using RideDispatch.Application.Dispatch.Eligibility;
 using RideDispatch.Application.DriverFinancialStanding;
 using RideDispatch.Application.DriverLocations;
 using RideDispatch.Application.Drivers;
@@ -11,6 +12,11 @@ using RideDispatch.Infrastructure;
 using RideDispatch.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+var eligibilityConfiguration = builder.Configuration.GetSection("Dispatch:Eligibility");
+var eligibilityPolicy = new DispatchEligibilityPolicy(
+    eligibilityConfiguration.GetValue<double>("MaxRadiusMeters"),
+    TimeSpan.FromSeconds(eligibilityConfiguration.GetValue<double>("LocationFreshnessSeconds")),
+    eligibilityConfiguration.GetValue<decimal>("MinimumCommissionBalance"));
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -21,6 +27,7 @@ builder.Services.AddControllers()
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton(eligibilityPolicy);
 builder.Services.AddScoped<CreateDriver>();
 builder.Services.AddScoped<GetDriver>();
 builder.Services.AddScoped<ListDrivers>();
@@ -38,6 +45,7 @@ builder.Services.AddScoped<GetPassenger>();
 builder.Services.AddScoped<CreateRideRequest>();
 builder.Services.AddScoped<GetRideRequest>();
 builder.Services.AddScoped<ListRideRequests>();
+builder.Services.AddScoped<FindEligibleDrivers>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()
