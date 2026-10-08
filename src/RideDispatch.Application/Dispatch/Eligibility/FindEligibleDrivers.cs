@@ -1,5 +1,6 @@
 using RideDispatch.Application.Dispatch.Ranking;
 using RideDispatch.Application.RideRequests;
+using RideDispatch.Domain.Dispatch;
 
 namespace RideDispatch.Application.Dispatch.Eligibility;
 

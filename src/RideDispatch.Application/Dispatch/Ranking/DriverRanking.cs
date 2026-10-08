@@ -1,4 +1,5 @@
 using RideDispatch.Application.Dispatch.Eligibility;
+using RideDispatch.Domain.Dispatch;
 
 namespace RideDispatch.Application.Dispatch.Ranking;
 

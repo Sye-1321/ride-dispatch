@@ -1,6 +1,6 @@
 using RideDispatch.Application.Dispatch.Eligibility;
-using RideDispatch.Application.Dispatch.Ranking;
 using RideDispatch.Application.RideRequests;
+using RideDispatch.Domain.Dispatch;
 using RideDispatch.Domain.Drivers;
 using RideDispatch.Domain.RideRequests;
 using RideDispatch.Domain.Vehicles;

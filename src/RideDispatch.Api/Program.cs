@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using RideDispatch.Application.Dispatch.AllocationRuns;
 using RideDispatch.Application.Dispatch.Eligibility;
 using RideDispatch.Application.DriverFinancialStanding;
 using RideDispatch.Application.DriverLocations;
@@ -46,6 +47,8 @@ builder.Services.AddScoped<CreateRideRequest>();
 builder.Services.AddScoped<GetRideRequest>();
 builder.Services.AddScoped<ListRideRequests>();
 builder.Services.AddScoped<FindEligibleDrivers>();
+builder.Services.AddScoped<CreateAllocationRun>();
+builder.Services.AddScoped<GetAllocationRun>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()

@@ -1,4 +1,4 @@
-namespace RideDispatch.Application.Dispatch.Ranking;
+namespace RideDispatch.Domain.Dispatch;
 
 public enum DispatchRankingPolicy
 {
