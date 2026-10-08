@@ -1,3 +1,4 @@
+using RideDispatch.Application.Dispatch.Ranking;
 using RideDispatch.Application.RideRequests;
 
 namespace RideDispatch.Application.Dispatch.Eligibility;
@@ -46,10 +47,8 @@ public sealed class FindEligibleDrivers(
                 evaluation.Candidate.DriverId,
                 evaluation.Candidate.DistanceMeters,
                 evaluation.Candidate.AvailableSince!.Value,
-                evaluation.Candidate.LocationRecordedAt))
-            .OrderBy(driver => driver.DriverId)
-            .ToList();
+                evaluation.Candidate.LocationRecordedAt));
 
-        return new(FindEligibleDriversOutcome.Success, eligibleDrivers);
+        return new(FindEligibleDriversOutcome.Success, NearestDriverRanking.Rank(eligibleDrivers));
     }
 }

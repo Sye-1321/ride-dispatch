@@ -50,7 +50,7 @@ public sealed class FindEligibleDriversTests
     }
 
     [Fact]
-    public async Task Time_provider_controls_freshness_and_only_eligible_candidates_are_returned()
+    public async Task Eligible_candidates_are_ranked_by_nearest_distance_after_filtering()
     {
         var rideRequest = CreateRideRequest();
         var higherId = Guid.Parse("0199b631-0000-7000-8000-000000000002");
@@ -58,9 +58,9 @@ public sealed class FindEligibleDriversTests
         var staleId = Guid.Parse("0199b631-0000-7000-8000-000000000003");
         var candidateStore = new CapturingCandidateStore(
         [
-            Candidate(higherId, CurrentTime),
-            Candidate(staleId, CurrentTime.AddSeconds(-61)),
-            Candidate(lowerId, CurrentTime.AddSeconds(-60)),
+            Candidate(higherId, CurrentTime, 100),
+            Candidate(staleId, CurrentTime.AddSeconds(-61), 50),
+            Candidate(lowerId, CurrentTime.AddSeconds(-60), 200),
         ]);
         var timeProvider = new FixedTimeProvider(CurrentTime);
         var useCase = new FindEligibleDrivers(
@@ -72,7 +72,7 @@ public sealed class FindEligibleDriversTests
         var result = await useCase.ExecuteAsync(rideRequest.Id, CancellationToken.None);
 
         Assert.Equal(FindEligibleDriversOutcome.Success, result.Outcome);
-        Assert.Equal([lowerId, higherId], result.Drivers!.Select(driver => driver.DriverId));
+        Assert.Equal([higherId, lowerId], result.Drivers!.Select(driver => driver.DriverId));
         Assert.Equal(1, timeProvider.GetUtcNowCallCount);
     }
 
@@ -94,7 +94,8 @@ public sealed class FindEligibleDriversTests
 
     private static DispatchCandidateSnapshot Candidate(
         Guid driverId,
-        DateTimeOffset locationRecordedAt) =>
+        DateTimeOffset locationRecordedAt,
+        double distanceMeters) =>
         new(
             driverId,
             DriverApprovalStatus.Approved,
@@ -102,7 +103,7 @@ public sealed class FindEligibleDriversTests
             CurrentTime.AddHours(-1),
             VehicleType.Standard,
             locationRecordedAt,
-            100,
+            distanceMeters,
             1m);
 
     private sealed class StubRideRequestStore(RideRequest? rideRequest) : IRideRequestStore

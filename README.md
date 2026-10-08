@@ -7,8 +7,8 @@ Status: early implementation.
 Current scope: driver operating state, vehicles, PostGIS locations, commission standing, passengers, and ride requests.
 
 Dispatch eligibility filters nearby drivers by approval, availability, vehicle compatibility,
-location freshness/radius, and commission standing. Allocation ranking, offers, and assignments
-are forthcoming.
+location freshness/radius, and commission standing. Eligible drivers are ranked by the NEAREST
+order: distance, availability time, then driver ID. Offers and assignments remain future work.
 
 Target stack: .NET 10 / ASP.NET Core / PostgreSQL / PostGIS.
 

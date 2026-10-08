@@ -60,13 +60,31 @@ public sealed class DispatchEligibilityTests
         timeProvider.Advance(TimeSpan.FromSeconds(61));
 
         var rideRequestId = await CreateStandardRideRequestAsync(client);
-        var eligibleDriverId = await CreateDriverAsync(
+        var nearestEligibleDriverId = await CreateDriverAsync(
             client,
-            "A Eligible",
+            "A Nearest Eligible",
             approved: true,
             operationalStatus: "AVAILABLE",
             vehicleType: "STANDARD",
             latitude: 9.031,
+            longitude: 38.74,
+            commissionBalance: 1m);
+        var middleEligibleDriverId = await CreateDriverAsync(
+            client,
+            "J Middle Eligible",
+            approved: true,
+            operationalStatus: "AVAILABLE",
+            vehicleType: "STANDARD",
+            latitude: 9.04,
+            longitude: 38.74,
+            commissionBalance: 1m);
+        var farthestEligibleDriverId = await CreateDriverAsync(
+            client,
+            "K Farthest Eligible",
+            approved: true,
+            operationalStatus: "AVAILABLE",
+            vehicleType: "STANDARD",
+            latitude: 9.05,
             longitude: 38.74,
             commissionBalance: 1m);
 
@@ -140,8 +158,15 @@ public sealed class DispatchEligibilityTests
 
         using var eligibleDrivers = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var drivers = eligibleDrivers.RootElement.EnumerateArray().ToArray();
-        var driver = Assert.Single(drivers);
-        Assert.Equal(eligibleDriverId, driver.GetProperty("driverId").GetGuid());
+        Assert.Equal(
+            [nearestEligibleDriverId, middleEligibleDriverId, farthestEligibleDriverId],
+            drivers.Select(driver => driver.GetProperty("driverId").GetGuid()));
+        Assert.True(
+            drivers.Select(driver => driver.GetProperty("distanceMeters").GetDouble())
+                .SequenceEqual(
+                    drivers.Select(driver => driver.GetProperty("distanceMeters").GetDouble())
+                        .OrderBy(distance => distance)));
+        var driver = drivers[0];
         Assert.InRange(driver.GetProperty("distanceMeters").GetDouble(), 50, 200);
         Assert.Equal(JsonValueKind.String, driver.GetProperty("availableSince").ValueKind);
         Assert.Equal(JsonValueKind.String, driver.GetProperty("locationRecordedAt").ValueKind);
