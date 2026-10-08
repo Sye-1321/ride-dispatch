@@ -60,15 +60,18 @@ public sealed class DispatchEligibilityTests
         timeProvider.Advance(TimeSpan.FromSeconds(61));
 
         var rideRequestId = await CreateStandardRideRequestAsync(client);
-        var nearestEligibleDriverId = await CreateDriverAsync(
+        var farthestEligibleDriverId = await CreateDriverAsync(
             client,
-            "A Nearest Eligible",
+            "K Farthest Eligible",
             approved: true,
             operationalStatus: "AVAILABLE",
             vehicleType: "STANDARD",
-            latitude: 9.031,
+            latitude: 9.05,
             longitude: 38.74,
             commissionBalance: 1m);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+
         var middleEligibleDriverId = await CreateDriverAsync(
             client,
             "J Middle Eligible",
@@ -78,13 +81,16 @@ public sealed class DispatchEligibilityTests
             latitude: 9.04,
             longitude: 38.74,
             commissionBalance: 1m);
-        var farthestEligibleDriverId = await CreateDriverAsync(
+
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+
+        var nearestEligibleDriverId = await CreateDriverAsync(
             client,
-            "K Farthest Eligible",
+            "A Nearest Eligible",
             approved: true,
             operationalStatus: "AVAILABLE",
             vehicleType: "STANDARD",
-            latitude: 9.05,
+            latitude: 9.031,
             longitude: 38.74,
             commissionBalance: 1m);
 
@@ -171,6 +177,26 @@ public sealed class DispatchEligibilityTests
         Assert.Equal(JsonValueKind.String, driver.GetProperty("availableSince").ValueKind);
         Assert.Equal(JsonValueKind.String, driver.GetProperty("locationRecordedAt").ValueKind);
         Assert.False(driver.TryGetProperty("commissionBalance", out _));
+
+        using var longestIdleResponse = await client.GetAsync(
+            $"/api/v1/ride-requests/{rideRequestId}/eligible-drivers?rankingPolicy=LongestIdle");
+        longestIdleResponse.EnsureSuccessStatusCode();
+
+        using var longestIdleDrivers = JsonDocument.Parse(
+            await longestIdleResponse.Content.ReadAsStringAsync());
+        Assert.Equal(
+            [farthestEligibleDriverId, middleEligibleDriverId, nearestEligibleDriverId],
+            longestIdleDrivers.RootElement
+                .EnumerateArray()
+                .Select(longestIdleDriver => longestIdleDriver.GetProperty("driverId").GetGuid()));
+
+        using var undefinedNumericPolicyResponse = await client.GetAsync(
+            $"/api/v1/ride-requests/{rideRequestId}/eligible-drivers?rankingPolicy=999");
+        Assert.Equal(HttpStatusCode.BadRequest, undefinedNumericPolicyResponse.StatusCode);
+
+        using var invalidTextPolicyResponse = await client.GetAsync(
+            $"/api/v1/ride-requests/{rideRequestId}/eligible-drivers?rankingPolicy=invalid");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidTextPolicyResponse.StatusCode);
 
         using var missingRideResponse = await client.GetAsync(
             $"/api/v1/ride-requests/{Guid.CreateVersion7()}/eligible-drivers");

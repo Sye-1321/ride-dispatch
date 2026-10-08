@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using RideDispatch.Application.Dispatch.Eligibility;
+using RideDispatch.Application.Dispatch.Ranking;
 
 namespace RideDispatch.Api.Controllers;
 
@@ -11,9 +12,16 @@ public sealed class RideRequestEligibilityController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<EligibleDriverResponse>>> Get(
         Guid rideRequestId,
         [FromServices] FindEligibleDrivers useCase,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] DispatchRankingPolicy rankingPolicy = DispatchRankingPolicy.Nearest)
     {
-        var result = await useCase.ExecuteAsync(rideRequestId, cancellationToken);
+        if (!Enum.IsDefined(rankingPolicy))
+        {
+            ModelState.AddModelError(nameof(rankingPolicy), "The ranking policy is invalid.");
+            return ValidationProblem(ModelState);
+        }
+
+        var result = await useCase.ExecuteAsync(rideRequestId, rankingPolicy, cancellationToken);
 
         return result.Outcome switch
         {

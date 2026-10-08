@@ -21,6 +21,7 @@ public sealed class FindEligibleDrivers(
 {
     public async Task<FindEligibleDriversResult> ExecuteAsync(
         Guid rideRequestId,
+        DispatchRankingPolicy rankingPolicy,
         CancellationToken cancellationToken)
     {
         var rideRequest = await rideRequestStore.FindByIdAsync(rideRequestId, cancellationToken);
@@ -49,6 +50,6 @@ public sealed class FindEligibleDrivers(
                 evaluation.Candidate.AvailableSince!.Value,
                 evaluation.Candidate.LocationRecordedAt));
 
-        return new(FindEligibleDriversOutcome.Success, NearestDriverRanking.Rank(eligibleDrivers));
+        return new(FindEligibleDriversOutcome.Success, DriverRanking.Rank(eligibleDrivers, rankingPolicy));
     }
 }

@@ -1,4 +1,5 @@
 using RideDispatch.Application.Dispatch.Eligibility;
+using RideDispatch.Application.Dispatch.Ranking;
 using RideDispatch.Application.RideRequests;
 using RideDispatch.Domain.Drivers;
 using RideDispatch.Domain.RideRequests;
@@ -24,7 +25,10 @@ public sealed class FindEligibleDriversTests
             Policy,
             new FixedTimeProvider(CurrentTime));
 
-        var result = await useCase.ExecuteAsync(Guid.CreateVersion7(), CancellationToken.None);
+        var result = await useCase.ExecuteAsync(
+            Guid.CreateVersion7(),
+            DispatchRankingPolicy.Nearest,
+            CancellationToken.None);
 
         Assert.Equal(FindEligibleDriversOutcome.RideRequestNotFound, result.Outcome);
         Assert.False(candidateStore.WasCalled);
@@ -41,7 +45,10 @@ public sealed class FindEligibleDriversTests
             Policy,
             new FixedTimeProvider(CurrentTime));
 
-        await useCase.ExecuteAsync(rideRequest.Id, CancellationToken.None);
+        await useCase.ExecuteAsync(
+            rideRequest.Id,
+            DispatchRankingPolicy.Nearest,
+            CancellationToken.None);
 
         Assert.True(candidateStore.WasCalled);
         Assert.Equal(rideRequest.PickupLatitude, candidateStore.PickupLatitude);
@@ -50,7 +57,7 @@ public sealed class FindEligibleDriversTests
     }
 
     [Fact]
-    public async Task Eligible_candidates_are_ranked_by_nearest_distance_after_filtering()
+    public async Task Requested_ranking_policy_is_applied_after_eligibility_filtering()
     {
         var rideRequest = CreateRideRequest();
         var higherId = Guid.Parse("0199b631-0000-7000-8000-000000000002");
@@ -58,9 +65,9 @@ public sealed class FindEligibleDriversTests
         var staleId = Guid.Parse("0199b631-0000-7000-8000-000000000003");
         var candidateStore = new CapturingCandidateStore(
         [
-            Candidate(higherId, CurrentTime, 100),
-            Candidate(staleId, CurrentTime.AddSeconds(-61), 50),
-            Candidate(lowerId, CurrentTime.AddSeconds(-60), 200),
+            Candidate(higherId, CurrentTime, CurrentTime.AddMinutes(-30), 100),
+            Candidate(staleId, CurrentTime.AddSeconds(-61), CurrentTime.AddHours(-3), 50),
+            Candidate(lowerId, CurrentTime.AddSeconds(-60), CurrentTime.AddHours(-2), 200),
         ]);
         var timeProvider = new FixedTimeProvider(CurrentTime);
         var useCase = new FindEligibleDrivers(
@@ -69,10 +76,13 @@ public sealed class FindEligibleDriversTests
             Policy,
             timeProvider);
 
-        var result = await useCase.ExecuteAsync(rideRequest.Id, CancellationToken.None);
+        var result = await useCase.ExecuteAsync(
+            rideRequest.Id,
+            DispatchRankingPolicy.LongestIdle,
+            CancellationToken.None);
 
         Assert.Equal(FindEligibleDriversOutcome.Success, result.Outcome);
-        Assert.Equal([higherId, lowerId], result.Drivers!.Select(driver => driver.DriverId));
+        Assert.Equal([lowerId, higherId], result.Drivers!.Select(driver => driver.DriverId));
         Assert.Equal(1, timeProvider.GetUtcNowCallCount);
     }
 
@@ -95,12 +105,13 @@ public sealed class FindEligibleDriversTests
     private static DispatchCandidateSnapshot Candidate(
         Guid driverId,
         DateTimeOffset locationRecordedAt,
+        DateTimeOffset availableSince,
         double distanceMeters) =>
         new(
             driverId,
             DriverApprovalStatus.Approved,
             DriverOperationalStatus.Available,
-            CurrentTime.AddHours(-1),
+            availableSince,
             VehicleType.Standard,
             locationRecordedAt,
             distanceMeters,
