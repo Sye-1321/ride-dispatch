@@ -19,11 +19,11 @@ public sealed class FindEligibleDriversTests
     public async Task Missing_ride_returns_not_found_without_querying_candidates()
     {
         var candidateStore = new CapturingCandidateStore([]);
-        var useCase = new FindEligibleDrivers(
+        var useCase = new FindEligibleDrivers(new EvaluateDispatchCandidates(
             new StubRideRequestStore(null),
             candidateStore,
             Policy,
-            new FixedTimeProvider(CurrentTime));
+            new FixedTimeProvider(CurrentTime)));
 
         var result = await useCase.ExecuteAsync(
             Guid.CreateVersion7(),
@@ -39,11 +39,11 @@ public sealed class FindEligibleDriversTests
     {
         var rideRequest = CreateRideRequest();
         var candidateStore = new CapturingCandidateStore([]);
-        var useCase = new FindEligibleDrivers(
+        var useCase = new FindEligibleDrivers(new EvaluateDispatchCandidates(
             new StubRideRequestStore(rideRequest),
             candidateStore,
             Policy,
-            new FixedTimeProvider(CurrentTime));
+            new FixedTimeProvider(CurrentTime)));
 
         await useCase.ExecuteAsync(
             rideRequest.Id,
@@ -70,11 +70,11 @@ public sealed class FindEligibleDriversTests
             Candidate(lowerId, CurrentTime.AddSeconds(-60), CurrentTime.AddHours(-2), 200),
         ]);
         var timeProvider = new FixedTimeProvider(CurrentTime);
-        var useCase = new FindEligibleDrivers(
+        var useCase = new FindEligibleDrivers(new EvaluateDispatchCandidates(
             new StubRideRequestStore(rideRequest),
             candidateStore,
             Policy,
-            timeProvider);
+            timeProvider));
 
         var result = await useCase.ExecuteAsync(
             rideRequest.Id,

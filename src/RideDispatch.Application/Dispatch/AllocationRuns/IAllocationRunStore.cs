@@ -8,5 +8,9 @@ public interface IAllocationRunStore
 
     Task<AllocationRun?> FindByIdAsync(Guid id, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<AllocationCandidateEvaluation>?> FindCandidateEvaluationsAsync(
+        Guid allocationRunId,
+        CancellationToken cancellationToken);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

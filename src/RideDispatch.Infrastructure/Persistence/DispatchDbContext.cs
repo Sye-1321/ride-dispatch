@@ -20,6 +20,12 @@ public sealed class DispatchDbContext(DbContextOptions<DispatchDbContext> option
 
     public DbSet<AllocationRun> AllocationRuns => Set<AllocationRun>();
 
+    public DbSet<AllocationCandidateEvaluation> AllocationCandidateEvaluations =>
+        Set<AllocationCandidateEvaluation>();
+
+    public DbSet<AllocationCandidateRejection> AllocationCandidateRejections =>
+        Set<AllocationCandidateRejection>();
+
     public DbSet<DriverLocationRecord> DriverLocations => Set<DriverLocationRecord>();
 
     public DbSet<DriverFinancialStandingRecord> DriverFinancialStandings =>

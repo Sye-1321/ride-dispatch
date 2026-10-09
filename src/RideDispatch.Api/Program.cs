@@ -46,9 +46,11 @@ builder.Services.AddScoped<GetPassenger>();
 builder.Services.AddScoped<CreateRideRequest>();
 builder.Services.AddScoped<GetRideRequest>();
 builder.Services.AddScoped<ListRideRequests>();
+builder.Services.AddScoped<EvaluateDispatchCandidates>();
 builder.Services.AddScoped<FindEligibleDrivers>();
 builder.Services.AddScoped<CreateAllocationRun>();
 builder.Services.AddScoped<GetAllocationRun>();
+builder.Services.AddScoped<GetAllocationCandidateEvaluations>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()

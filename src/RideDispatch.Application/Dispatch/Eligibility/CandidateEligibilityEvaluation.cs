@@ -1,3 +1,5 @@
+using RideDispatch.Domain.Dispatch;
+
 namespace RideDispatch.Application.Dispatch.Eligibility;
 
 public sealed record CandidateEligibilityEvaluation(

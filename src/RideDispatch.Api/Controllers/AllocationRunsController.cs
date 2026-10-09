@@ -45,6 +45,18 @@ public sealed class AllocationRunsController : ControllerBase
             ? NotFound()
             : Ok(AllocationRunResponse.FromView(allocationRun));
     }
+
+    [HttpGet("allocation-runs/{allocationRunId:guid}/candidate-evaluations")]
+    public async Task<ActionResult<IReadOnlyList<AllocationCandidateEvaluationResponse>>> GetCandidateEvaluations(
+        Guid allocationRunId,
+        [FromServices] GetAllocationCandidateEvaluations useCase,
+        CancellationToken cancellationToken)
+    {
+        var evaluations = await useCase.ExecuteAsync(allocationRunId, cancellationToken);
+        return evaluations is null
+            ? NotFound()
+            : Ok(evaluations.Select(AllocationCandidateEvaluationResponse.FromView));
+    }
 }
 
 public sealed record AllocationRunResponse(
@@ -61,4 +73,25 @@ public sealed record AllocationRunResponse(
             allocationRun.RankingPolicy,
             allocationRun.RecommendedDriverId,
             allocationRun.CreatedAt);
+}
+
+public sealed record AllocationCandidateEvaluationResponse(
+    Guid DriverId,
+    bool IsEligible,
+    int? Rank,
+    double DistanceMeters,
+    DateTimeOffset? AvailableSince,
+    DateTimeOffset LocationRecordedAt,
+    IReadOnlyList<EligibilityRejectionReason> RejectionReasons)
+{
+    public static AllocationCandidateEvaluationResponse FromView(
+        AllocationCandidateEvaluationView evaluation) =>
+        new(
+            evaluation.DriverId,
+            evaluation.IsEligible,
+            evaluation.Rank,
+            evaluation.DistanceMeters,
+            evaluation.AvailableSince,
+            evaluation.LocationRecordedAt,
+            evaluation.RejectionReasons);
 }

@@ -14,6 +14,28 @@ public sealed class AllocationRunStore(DispatchDbContext dbContext) : IAllocatio
             .AsNoTracking()
             .SingleOrDefaultAsync(allocationRun => allocationRun.Id == id, cancellationToken);
 
+    public async Task<IReadOnlyList<AllocationCandidateEvaluation>?> FindCandidateEvaluationsAsync(
+        Guid allocationRunId,
+        CancellationToken cancellationToken)
+    {
+        var runExists = await dbContext.AllocationRuns
+            .AsNoTracking()
+            .AnyAsync(allocationRun => allocationRun.Id == allocationRunId, cancellationToken);
+        if (!runExists)
+        {
+            return null;
+        }
+
+        return await dbContext.AllocationCandidateEvaluations
+            .AsNoTracking()
+            .Include(evaluation => evaluation.Rejections)
+            .Where(evaluation => evaluation.AllocationRunId == allocationRunId)
+            .OrderBy(evaluation => evaluation.Rank == null)
+            .ThenBy(evaluation => evaluation.Rank)
+            .ThenBy(evaluation => evaluation.DriverId)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken) =>
         await dbContext.SaveChangesAsync(cancellationToken);
 }

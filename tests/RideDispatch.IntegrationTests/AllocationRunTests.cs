@@ -60,6 +60,7 @@ public sealed class AllocationRunTests
             "Nearer Newer",
             9.031,
             38.74);
+        var rejectedDriverId = await CreateRejectedDriverAsync(client, 9.032, 38.74);
 
         using var nearestResponse = await client.PostAsync(
             $"/api/v1/ride-requests/{rideRequestId}/allocation-runs",
@@ -79,6 +80,31 @@ public sealed class AllocationRunTests
         using var persistedRun = JsonDocument.Parse(await getResponse.Content.ReadAsStringAsync());
         Assert.Equal(nearestRoot.ToString(), persistedRun.RootElement.ToString());
 
+        using var nearestEvaluationsResponse = await client.GetAsync(
+            $"/api/v1/allocation-runs/{nearestRunId}/candidate-evaluations");
+        nearestEvaluationsResponse.EnsureSuccessStatusCode();
+        using var nearestEvaluations = JsonDocument.Parse(
+            await nearestEvaluationsResponse.Content.ReadAsStringAsync());
+        var nearestEvidence = nearestEvaluations.RootElement.EnumerateArray().ToArray();
+        Assert.Equal(3, nearestEvidence.Length);
+        AssertEvaluation(nearestEvidence[0], nearerNewerDriverId, true, 1, []);
+        AssertEvaluation(nearestEvidence[1], fartherLongerIdleDriverId, true, 2, []);
+        AssertEvaluation(
+            nearestEvidence[2],
+            rejectedDriverId,
+            false,
+            null,
+            [
+                "DRIVER_NOT_APPROVED",
+                "DRIVER_NOT_AVAILABLE",
+                "AVAILABILITY_TIMESTAMP_MISSING",
+                "VEHICLE_MISSING",
+                "FINANCIAL_STANDING_MISSING",
+            ]);
+        Assert.Equal(
+            nearestRoot.GetProperty("recommendedDriverId").GetGuid(),
+            nearestEvidence[0].GetProperty("driverId").GetGuid());
+
         using var longestIdleResponse = await client.PostAsync(
             $"/api/v1/ride-requests/{rideRequestId}/allocation-runs?rankingPolicy=LongestIdle",
             null);
@@ -92,10 +118,57 @@ public sealed class AllocationRunTests
             fartherLongerIdleDriverId,
             longestIdleRoot.GetProperty("recommendedDriverId").GetGuid());
 
+        using var longestIdleEvaluationsResponse = await client.GetAsync(
+            $"/api/v1/allocation-runs/{longestIdleRoot.GetProperty("id").GetGuid()}/candidate-evaluations");
+        longestIdleEvaluationsResponse.EnsureSuccessStatusCode();
+        using var longestIdleEvaluations = JsonDocument.Parse(
+            await longestIdleEvaluationsResponse.Content.ReadAsStringAsync());
+        var longestIdleEvidence = longestIdleEvaluations.RootElement.EnumerateArray().ToArray();
+        AssertEvaluation(longestIdleEvidence[0], fartherLongerIdleDriverId, true, 1, []);
+        AssertEvaluation(longestIdleEvidence[1], nearerNewerDriverId, true, 2, []);
+        AssertEvaluation(
+            longestIdleEvidence[2],
+            rejectedDriverId,
+            false,
+            null,
+            [
+                "DRIVER_NOT_APPROVED",
+                "DRIVER_NOT_AVAILABLE",
+                "AVAILABILITY_TIMESTAMP_MISSING",
+                "VEHICLE_MISSING",
+                "FINANCIAL_STANDING_MISSING",
+            ]);
+
         using var invalidPolicyResponse = await client.PostAsync(
             $"/api/v1/ride-requests/{rideRequestId}/allocation-runs?rankingPolicy=999",
             null);
         Assert.Equal(HttpStatusCode.BadRequest, invalidPolicyResponse.StatusCode);
+    }
+
+    private static void AssertEvaluation(
+        JsonElement evaluation,
+        Guid driverId,
+        bool isEligible,
+        int? rank,
+        IReadOnlyList<string> rejectionReasons)
+    {
+        Assert.Equal(driverId, evaluation.GetProperty("driverId").GetGuid());
+        Assert.Equal(isEligible, evaluation.GetProperty("isEligible").GetBoolean());
+        if (rank is null)
+        {
+            Assert.Equal(JsonValueKind.Null, evaluation.GetProperty("rank").ValueKind);
+        }
+        else
+        {
+            Assert.Equal(rank, evaluation.GetProperty("rank").GetInt32());
+        }
+
+        Assert.Equal(
+            rejectionReasons,
+            evaluation.GetProperty("rejectionReasons")
+                .EnumerateArray()
+                .Select(reason => reason.GetString()!)
+                .ToArray());
     }
 
     private static async Task<Guid> CreateRideRequestAsync(HttpClient client)
@@ -167,6 +240,25 @@ public sealed class AllocationRunTests
             standingResponse.EnsureSuccessStatusCode();
         }
 
+        return driverId;
+    }
+
+    private static async Task<Guid> CreateRejectedDriverAsync(
+        HttpClient client,
+        double latitude,
+        double longitude)
+    {
+        using var createResponse = await client.PostAsJsonAsync(
+            "/api/v1/drivers",
+            new { name = "Rejected Nearby" });
+        createResponse.EnsureSuccessStatusCode();
+        using var driver = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var driverId = driver.RootElement.GetProperty("id").GetGuid();
+
+        using var locationResponse = await client.PutAsJsonAsync(
+            $"/api/v1/drivers/{driverId}/location",
+            new { latitude, longitude });
+        locationResponse.EnsureSuccessStatusCode();
         return driverId;
     }
 

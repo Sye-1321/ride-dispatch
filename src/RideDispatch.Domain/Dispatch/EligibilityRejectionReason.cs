@@ -1,4 +1,4 @@
-namespace RideDispatch.Application.Dispatch.Eligibility;
+namespace RideDispatch.Domain.Dispatch;
 
 public enum EligibilityRejectionReason
 {

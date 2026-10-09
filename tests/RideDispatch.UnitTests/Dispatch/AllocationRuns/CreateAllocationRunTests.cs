@@ -38,12 +38,14 @@ public sealed class CreateAllocationRunTests
         var rideRequest = CreateRideRequest();
         var nearerDriverId = Guid.CreateVersion7();
         var longerIdleDriverId = Guid.CreateVersion7();
+        var rejectedDriverId = Guid.CreateVersion7();
         var store = new CapturingAllocationRunStore();
         var useCase = CreateUseCase(
             rideRequest,
             [
                 Candidate(nearerDriverId, 100, CurrentTime.AddMinutes(-10)),
                 Candidate(longerIdleDriverId, 200, CurrentTime.AddHours(-1)),
+                RejectedCandidate(rejectedDriverId),
             ],
             store);
 
@@ -58,6 +60,18 @@ public sealed class CreateAllocationRunTests
         Assert.Equal(result.AllocationRun.Id, store.AddedRun!.Id);
         Assert.Equal(1, store.AddCallCount);
         Assert.Equal(1, store.SaveCallCount);
+        Assert.Equal(3, store.AddedRun.CandidateEvaluations.Count);
+        Assert.Equal(1, store.AddedRun.CandidateEvaluations.Single(e => e.DriverId == longerIdleDriverId).Rank);
+        Assert.Equal(2, store.AddedRun.CandidateEvaluations.Single(e => e.DriverId == nearerDriverId).Rank);
+        var rejected = store.AddedRun.CandidateEvaluations.Single(e => e.DriverId == rejectedDriverId);
+        Assert.Null(rejected.Rank);
+        Assert.Equal(
+            [
+                EligibilityRejectionReason.DriverNotApproved,
+                EligibilityRejectionReason.DriverNotAvailable,
+                EligibilityRejectionReason.AvailabilityTimestampMissing,
+            ],
+            rejected.Rejections.Select(rejection => rejection.Reason));
     }
 
     [Fact]
@@ -75,6 +89,7 @@ public sealed class CreateAllocationRunTests
         Assert.Equal(CreateAllocationRunOutcome.Success, result.Outcome);
         Assert.Null(result.AllocationRun!.RecommendedDriverId);
         Assert.Null(store.AddedRun!.RecommendedDriverId);
+        Assert.Empty(store.AddedRun.CandidateEvaluations);
         Assert.Equal(1, store.SaveCallCount);
     }
 
@@ -83,13 +98,13 @@ public sealed class CreateAllocationRunTests
         IReadOnlyList<DispatchCandidateSnapshot> candidates,
         CapturingAllocationRunStore allocationRunStore)
     {
-        var findEligibleDrivers = new FindEligibleDrivers(
+        var evaluateDispatchCandidates = new EvaluateDispatchCandidates(
             new StubRideRequestStore(rideRequest),
             new StubCandidateStore(candidates),
             EligibilityPolicy,
             new FixedTimeProvider(CurrentTime));
         return new CreateAllocationRun(
-            findEligibleDrivers,
+            evaluateDispatchCandidates,
             allocationRunStore,
             new FixedTimeProvider(CurrentTime));
     }
@@ -122,6 +137,17 @@ public sealed class CreateAllocationRunTests
             VehicleType.Standard,
             CurrentTime,
             distanceMeters,
+            1m);
+
+    private static DispatchCandidateSnapshot RejectedCandidate(Guid driverId) =>
+        new(
+            driverId,
+            DriverApprovalStatus.Pending,
+            DriverOperationalStatus.Offline,
+            null,
+            VehicleType.Standard,
+            CurrentTime,
+            50,
             1m);
 
     private sealed class StubRideRequestStore(RideRequest? rideRequest) : IRideRequestStore
@@ -166,6 +192,11 @@ public sealed class CreateAllocationRunTests
         }
 
         public Task<AllocationRun?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<AllocationCandidateEvaluation>?> FindCandidateEvaluationsAsync(
+            Guid allocationRunId,
+            CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task SaveChangesAsync(CancellationToken cancellationToken)

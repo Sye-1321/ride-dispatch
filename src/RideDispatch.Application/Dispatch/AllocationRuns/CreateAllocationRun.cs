@@ -14,7 +14,7 @@ public sealed record CreateAllocationRunResult(
     AllocationRunView? AllocationRun = null);
 
 public sealed class CreateAllocationRun(
-    FindEligibleDrivers findEligibleDrivers,
+    EvaluateDispatchCandidates evaluateDispatchCandidates,
     IAllocationRunStore allocationRunStore,
     TimeProvider timeProvider)
 {
@@ -23,21 +23,40 @@ public sealed class CreateAllocationRun(
         DispatchRankingPolicy rankingPolicy,
         CancellationToken cancellationToken)
     {
-        var eligibleDrivers = await findEligibleDrivers.ExecuteAsync(
+        var dispatchEvaluation = await evaluateDispatchCandidates.ExecuteAsync(
             rideRequestId,
             rankingPolicy,
             cancellationToken);
 
-        if (eligibleDrivers.Outcome == FindEligibleDriversOutcome.RideRequestNotFound)
+        if (dispatchEvaluation.Outcome == EvaluateDispatchCandidatesOutcome.RideRequestNotFound)
         {
             return new(CreateAllocationRunOutcome.RideRequestNotFound);
         }
 
+        var rankedEligibleDrivers = dispatchEvaluation.RankedEligibleDrivers!;
         var allocationRun = AllocationRun.Create(
             rideRequestId,
             rankingPolicy,
-            eligibleDrivers.Drivers!.FirstOrDefault()?.DriverId,
+            rankedEligibleDrivers.FirstOrDefault()?.DriverId,
             timeProvider.GetUtcNow());
+
+        var ranks = rankedEligibleDrivers
+            .Select((driver, index) => new { driver.DriverId, Rank = index + 1 })
+            .ToDictionary(item => item.DriverId, item => item.Rank);
+
+        foreach (var evaluation in dispatchEvaluation.CandidateEvaluations!)
+        {
+            var candidate = evaluation.Candidate;
+            allocationRun.AddCandidateEvaluation(AllocationCandidateEvaluation.Create(
+                allocationRun.Id,
+                candidate.DriverId,
+                evaluation.IsEligible,
+                evaluation.IsEligible ? ranks[candidate.DriverId] : null,
+                candidate.DistanceMeters,
+                candidate.AvailableSince,
+                candidate.LocationRecordedAt,
+                evaluation.RejectionReasons));
+        }
 
         await allocationRunStore.AddAsync(allocationRun, cancellationToken);
         await allocationRunStore.SaveChangesAsync(cancellationToken);

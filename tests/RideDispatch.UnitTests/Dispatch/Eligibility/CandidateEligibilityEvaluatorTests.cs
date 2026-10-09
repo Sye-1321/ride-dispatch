@@ -1,4 +1,5 @@
 using RideDispatch.Application.Dispatch.Eligibility;
+using RideDispatch.Domain.Dispatch;
 using RideDispatch.Domain.Drivers;
 using RideDispatch.Domain.Vehicles;
 

@@ -45,5 +45,8 @@ public sealed class AllocationRunConfiguration : IEntityTypeConfiguration<Alloca
             .WithMany()
             .HasForeignKey(allocationRun => allocationRun.RecommendedDriverId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Navigation(allocationRun => allocationRun.CandidateEvaluations)
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }
