@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using RideDispatch.Application.Dispatch.AllocationRuns;
 using RideDispatch.Application.Dispatch.Eligibility;
+using RideDispatch.Application.Dispatch.Offers;
 using RideDispatch.Application.DriverFinancialStanding;
 using RideDispatch.Application.DriverLocations;
 using RideDispatch.Application.Drivers;
@@ -18,6 +19,9 @@ var eligibilityPolicy = new DispatchEligibilityPolicy(
     eligibilityConfiguration.GetValue<double>("MaxRadiusMeters"),
     TimeSpan.FromSeconds(eligibilityConfiguration.GetValue<double>("LocationFreshnessSeconds")),
     eligibilityConfiguration.GetValue<decimal>("MinimumCommissionBalance"));
+var offerConfiguration = builder.Configuration.GetSection("Dispatch:Offers");
+var offerPolicy = new OfferPolicy(
+    TimeSpan.FromSeconds(offerConfiguration.GetValue<double>("TtlSeconds")));
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -29,6 +33,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(eligibilityPolicy);
+builder.Services.AddSingleton(offerPolicy);
 builder.Services.AddScoped<CreateDriver>();
 builder.Services.AddScoped<GetDriver>();
 builder.Services.AddScoped<ListDrivers>();
@@ -51,6 +56,11 @@ builder.Services.AddScoped<FindEligibleDrivers>();
 builder.Services.AddScoped<CreateAllocationRun>();
 builder.Services.AddScoped<GetAllocationRun>();
 builder.Services.AddScoped<GetAllocationCandidateEvaluations>();
+builder.Services.AddScoped<CreateOffer>();
+builder.Services.AddScoped<GetOffer>();
+builder.Services.AddScoped<AcceptOffer>();
+builder.Services.AddScoped<DeclineOffer>();
+builder.Services.AddScoped<WithdrawOffer>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()

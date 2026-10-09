@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RideDispatch.Application.Dispatch.AllocationRuns;
 using RideDispatch.Application.Dispatch.Eligibility;
+using RideDispatch.Application.Dispatch.Offers;
 using RideDispatch.Application.DriverFinancialStanding;
 using RideDispatch.Application.DriverLocations;
 using RideDispatch.Application.Drivers;
@@ -37,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<IRideRequestStore, RideRequestStore>();
         services.AddScoped<IDispatchCandidateStore, DispatchCandidateStore>();
         services.AddScoped<IAllocationRunStore, AllocationRunStore>();
+        services.AddScoped<IOfferStore, OfferStore>();
 
         return services;
     }

@@ -8,8 +8,9 @@ Current scope: driver operating state, vehicles, PostGIS locations, commission s
 
 Dispatch eligibility filters nearby drivers by approval, availability, vehicle compatibility,
 location freshness/radius, and commission standing. Eligible drivers are ranked by the NEAREST
-or LONGEST_IDLE order. Allocation runs persist the current recommendation, candidate eligibility
-and ranking evidence, and rejection reasons. Offers and assignments remain future work.
+or LONGEST_IDLE order. Allocation runs persist recommendations, candidate evidence, and rejection
+reasons. Dispatch also supports time-bounded driver offers and offer acceptance, decline, expiry,
+and withdrawal. Assignments remain future work.
 
 Target stack: .NET 10 / ASP.NET Core / PostgreSQL / PostGIS.
 

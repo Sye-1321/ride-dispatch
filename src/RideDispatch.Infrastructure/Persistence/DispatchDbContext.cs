@@ -20,6 +20,8 @@ public sealed class DispatchDbContext(DbContextOptions<DispatchDbContext> option
 
     public DbSet<AllocationRun> AllocationRuns => Set<AllocationRun>();
 
+    public DbSet<Offer> Offers => Set<Offer>();
+
     public DbSet<AllocationCandidateEvaluation> AllocationCandidateEvaluations =>
         Set<AllocationCandidateEvaluation>();
 
