@@ -10,4 +10,5 @@ public enum EligibilityRejectionReason
     LocationStale,
     FinancialStandingMissing,
     CommissionBalanceBelowMinimum,
+    AssignmentConflict,
 }

@@ -52,6 +52,11 @@ public static class CandidateEligibilityEvaluator
             rejectionReasons.Add(EligibilityRejectionReason.CommissionBalanceBelowMinimum);
         }
 
+        if (candidate.HasAssignmentConflict)
+        {
+            rejectionReasons.Add(EligibilityRejectionReason.AssignmentConflict);
+        }
+
         return new(candidate, rejectionReasons);
     }
 }

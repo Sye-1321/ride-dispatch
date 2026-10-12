@@ -1,6 +1,7 @@
 using RideDispatch.Application.Dispatch.Ranking;
 using RideDispatch.Application.RideRequests;
 using RideDispatch.Domain.Dispatch;
+using RideDispatch.Domain.RideRequests;
 
 namespace RideDispatch.Application.Dispatch.Eligibility;
 
@@ -32,12 +33,15 @@ public sealed class EvaluateDispatchCandidates(
             return new(EvaluateDispatchCandidatesOutcome.RideRequestNotFound);
         }
 
+        var currentUtcTime = timeProvider.GetUtcNow();
+        var occupancyWindow = RideOccupancyWindow.From(rideRequest, currentUtcTime);
         var candidates = await candidateStore.FindWithinRadiusAsync(
             rideRequest.PickupLatitude,
             rideRequest.PickupLongitude,
             policy.MaxRadiusMeters,
+            occupancyWindow.StartsAt,
+            occupancyWindow.EndsAt,
             cancellationToken);
-        var currentUtcTime = timeProvider.GetUtcNow();
         var evaluations = candidates
             .Select(candidate => CandidateEligibilityEvaluator.Evaluate(
                 candidate,

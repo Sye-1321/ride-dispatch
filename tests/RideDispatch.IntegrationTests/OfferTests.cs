@@ -62,18 +62,38 @@ public sealed class OfferTests
         using var duplicateResponse = await client.PostAsync($"/api/v1/allocation-runs/{firstRunId}/offers", null);
         Assert.Equal(HttpStatusCode.Conflict, duplicateResponse.StatusCode);
 
+        using var pendingAssignment = await client.PostAsync($"/api/v1/offers/{offerId}/assignments", null);
+        Assert.Equal(HttpStatusCode.Conflict, pendingAssignment.StatusCode);
+
         using var acceptResponse = await client.PostAsync($"/api/v1/offers/{offerId}/accept", null);
         Assert.Equal(HttpStatusCode.OK, acceptResponse.StatusCode);
         using var accepted = JsonDocument.Parse(await acceptResponse.Content.ReadAsStringAsync());
         Assert.Equal("ACCEPTED", accepted.RootElement.GetProperty("status").GetString());
         Assert.NotEqual(JsonValueKind.Null, accepted.RootElement.GetProperty("resolvedAt").ValueKind);
+
+        using var assignmentResponse = await client.PostAsync($"/api/v1/offers/{offerId}/assignments", null);
+        Assert.Equal(HttpStatusCode.Created, assignmentResponse.StatusCode);
+        Assert.NotNull(assignmentResponse.Headers.Location);
+        using var assignment = JsonDocument.Parse(await assignmentResponse.Content.ReadAsStringAsync());
+        Assert.Equal(offerId, assignment.RootElement.GetProperty("offerId").GetGuid());
+        Assert.Equal(rideId, assignment.RootElement.GetProperty("rideRequestId").GetGuid());
+        Assert.Equal(driverId, assignment.RootElement.GetProperty("driverId").GetGuid());
+        Assert.Equal(InitialTime, assignment.RootElement.GetProperty("startsAt").GetDateTimeOffset());
+        Assert.Equal(InitialTime.AddMinutes(20), assignment.RootElement.GetProperty("endsAt").GetDateTimeOffset());
+        using var getAssignment = await client.GetAsync(assignmentResponse.Headers.Location);
+        getAssignment.EnsureSuccessStatusCode();
+        Assert.Equal(assignment.RootElement.ToString(),
+            (await JsonDocument.ParseAsync(await getAssignment.Content.ReadAsStreamAsync())).RootElement.ToString());
+        using var duplicateAssignment = await client.PostAsync($"/api/v1/offers/{offerId}/assignments", null);
+        Assert.Equal(HttpStatusCode.Conflict, duplicateAssignment.StatusCode);
         foreach (var action in new[] { "decline", "withdraw" })
         {
             using var conflict = await client.PostAsync($"/api/v1/offers/{offerId}/{action}", null);
             Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
         }
 
-        var secondRunId = await CreateRunAsync(client, rideId);
+        var secondRideId = await CreateRideAsync(client, InitialTime.AddMinutes(20));
+        var secondRunId = await CreateRunAsync(client, secondRideId);
         using var secondCreate = await client.PostAsync($"/api/v1/allocation-runs/{secondRunId}/offers", null);
         secondCreate.EnsureSuccessStatusCode();
         using var second = JsonDocument.Parse(await secondCreate.Content.ReadAsStringAsync());
@@ -87,19 +107,20 @@ public sealed class OfferTests
         Assert.Equal(clock.GetUtcNow(), expired.RootElement.GetProperty("resolvedAt").GetDateTimeOffset());
     }
 
-    private static async Task<Guid> CreateRideAsync(HttpClient client)
+    private static async Task<Guid> CreateRideAsync(HttpClient client, DateTimeOffset? requestedPickupAt = null)
     {
         using var response = await client.PostAsJsonAsync("/api/v1/ride-requests", new
         {
             contactName = "Offer Passenger",
             contactPhone = "+251911000002",
             bookingSource = "CALL_CENTER",
-            timing = "IMMEDIATE",
+            timing = requestedPickupAt is null ? "IMMEDIATE" : "SCHEDULED",
             pickupLatitude = 9.03,
             pickupLongitude = 38.74,
             destinationLatitude = 9.01,
             destinationLongitude = 38.78,
             requiredVehicleType = "STANDARD",
+            requestedPickupAt,
             estimatedTripDurationSeconds = 1200,
         });
         response.EnsureSuccessStatusCode();

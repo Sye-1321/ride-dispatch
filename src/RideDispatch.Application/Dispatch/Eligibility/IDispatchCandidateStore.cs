@@ -6,5 +6,7 @@ public interface IDispatchCandidateStore
         double pickupLatitude,
         double pickupLongitude,
         double radiusMeters,
+        DateTimeOffset requestedStartsAt,
+        DateTimeOffset requestedEndsAt,
         CancellationToken cancellationToken);
 }

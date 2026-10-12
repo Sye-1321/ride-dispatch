@@ -21,6 +21,7 @@ public sealed class DispatchDbContext(DbContextOptions<DispatchDbContext> option
     public DbSet<AllocationRun> AllocationRuns => Set<AllocationRun>();
 
     public DbSet<Offer> Offers => Set<Offer>();
+    public DbSet<Assignment> Assignments => Set<Assignment>();
 
     public DbSet<AllocationCandidateEvaluation> AllocationCandidateEvaluations =>
         Set<AllocationCandidateEvaluation>();
@@ -36,6 +37,7 @@ public sealed class DispatchDbContext(DbContextOptions<DispatchDbContext> option
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresExtension("postgis");
+        modelBuilder.HasPostgresExtension("btree_gist");
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DispatchDbContext).Assembly);
 
         base.OnModelCreating(modelBuilder);

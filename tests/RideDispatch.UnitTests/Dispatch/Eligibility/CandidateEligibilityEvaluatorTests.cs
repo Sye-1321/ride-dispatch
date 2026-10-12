@@ -111,6 +111,21 @@ public sealed class CandidateEligibilityEvaluatorTests
     }
 
     [Fact]
+    public void Assignment_conflict_is_rejected()
+    {
+        var evaluation = Evaluate(Candidate() with { HasAssignmentConflict = true });
+        Assert.Equal([EligibilityRejectionReason.AssignmentConflict], evaluation.RejectionReasons);
+    }
+
+    [Fact]
+    public void Assignment_conflict_coexists_with_other_reasons()
+    {
+        var evaluation = Evaluate(Candidate(approvalStatus: DriverApprovalStatus.Pending) with { HasAssignmentConflict = true });
+        Assert.Contains(EligibilityRejectionReason.DriverNotApproved, evaluation.RejectionReasons);
+        Assert.Contains(EligibilityRejectionReason.AssignmentConflict, evaluation.RejectionReasons);
+    }
+
+    [Fact]
     public void Multiple_simultaneous_failures_are_accumulated()
     {
         var evaluation = Evaluate(Candidate(
@@ -163,5 +178,6 @@ public sealed class CandidateEligibilityEvaluatorTests
             vehicleType,
             locationRecordedAt ?? CurrentTime,
             100,
-            commissionBalance);
+            commissionBalance,
+            false);
 }

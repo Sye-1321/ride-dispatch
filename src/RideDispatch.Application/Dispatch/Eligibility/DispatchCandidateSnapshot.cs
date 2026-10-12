@@ -11,4 +11,5 @@ public sealed record DispatchCandidateSnapshot(
     VehicleType? VehicleType,
     DateTimeOffset LocationRecordedAt,
     double DistanceMeters,
-    decimal? CommissionBalance);
+    decimal? CommissionBalance,
+    bool HasAssignmentConflict);

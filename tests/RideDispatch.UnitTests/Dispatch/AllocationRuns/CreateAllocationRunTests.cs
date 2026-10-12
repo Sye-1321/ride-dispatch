@@ -137,7 +137,8 @@ public sealed class CreateAllocationRunTests
             VehicleType.Standard,
             CurrentTime,
             distanceMeters,
-            1m);
+            1m,
+            false);
 
     private static DispatchCandidateSnapshot RejectedCandidate(Guid driverId) =>
         new(
@@ -148,7 +149,8 @@ public sealed class CreateAllocationRunTests
             VehicleType.Standard,
             CurrentTime,
             50,
-            1m);
+            1m,
+            false);
 
     private sealed class StubRideRequestStore(RideRequest? rideRequest) : IRideRequestStore
     {
@@ -172,6 +174,8 @@ public sealed class CreateAllocationRunTests
             double pickupLatitude,
             double pickupLongitude,
             double radiusMeters,
+            DateTimeOffset requestedStartsAt,
+            DateTimeOffset requestedEndsAt,
             CancellationToken cancellationToken) =>
             Task.FromResult(candidates);
     }

@@ -115,7 +115,8 @@ public sealed class FindEligibleDriversTests
             VehicleType.Standard,
             locationRecordedAt,
             distanceMeters,
-            1m);
+            1m,
+            false);
 
     private sealed class StubRideRequestStore(RideRequest? rideRequest) : IRideRequestStore
     {
@@ -147,6 +148,8 @@ public sealed class FindEligibleDriversTests
             double pickupLatitude,
             double pickupLongitude,
             double radiusMeters,
+            DateTimeOffset requestedStartsAt,
+            DateTimeOffset requestedEndsAt,
             CancellationToken cancellationToken)
         {
             WasCalled = true;

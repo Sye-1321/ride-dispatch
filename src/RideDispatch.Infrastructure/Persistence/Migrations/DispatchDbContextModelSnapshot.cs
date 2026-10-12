@@ -21,6 +21,7 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                 .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
@@ -115,6 +116,56 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                     b.HasIndex("RideRequestId");
 
                     b.ToTable("allocation_runs", (string)null);
+                });
+
+            modelBuilder.Entity("RideDispatch.Domain.Dispatch.Assignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DriverId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("driver_id");
+
+                    b.Property<DateTimeOffset>("EndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ends_at");
+
+                    b.Property<Guid>("OfferId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("offer_id");
+
+                    b.Property<Guid>("RideRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ride_request_id");
+
+                    b.Property<DateTimeOffset>("StartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("starts_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DriverId");
+
+                    b.HasIndex("OfferId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_assignments_offer_id");
+
+                    b.HasIndex("RideRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_assignments_ride_request_id");
+
+                    b.ToTable("assignments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_assignments_ends_after_starts", "ends_at > starts_at");
+
+                            t.HasCheckConstraint("ck_assignments_starts_not_before_created", "starts_at >= created_at");
+                        });
                 });
 
             modelBuilder.Entity("RideDispatch.Domain.Dispatch.Offer", b =>
@@ -410,6 +461,27 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("RecommendedDriverId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("RideDispatch.Domain.RideRequests.RideRequest", null)
+                        .WithMany()
+                        .HasForeignKey("RideRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RideDispatch.Domain.Dispatch.Assignment", b =>
+                {
+                    b.HasOne("RideDispatch.Domain.Drivers.Driver", null)
+                        .WithMany()
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RideDispatch.Domain.Dispatch.Offer", null)
+                        .WithMany()
+                        .HasForeignKey("OfferId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("RideDispatch.Domain.RideRequests.RideRequest", null)
                         .WithMany()

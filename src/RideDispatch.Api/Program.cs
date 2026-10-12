@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using RideDispatch.Application.Dispatch.AllocationRuns;
+using RideDispatch.Application.Dispatch.Assignments;
 using RideDispatch.Application.Dispatch.Eligibility;
 using RideDispatch.Application.Dispatch.Offers;
 using RideDispatch.Application.DriverFinancialStanding;
@@ -61,6 +62,8 @@ builder.Services.AddScoped<GetOffer>();
 builder.Services.AddScoped<AcceptOffer>();
 builder.Services.AddScoped<DeclineOffer>();
 builder.Services.AddScoped<WithdrawOffer>();
+builder.Services.AddScoped<CreateAssignment>();
+builder.Services.AddScoped<GetAssignment>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()

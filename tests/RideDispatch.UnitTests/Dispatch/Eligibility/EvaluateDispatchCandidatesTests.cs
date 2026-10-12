@@ -99,7 +99,7 @@ public sealed class EvaluateDispatchCandidatesTests
         DateTimeOffset? availableSince,
         double distanceMeters = 100) =>
         new(driverId, approval, status, availableSince, VehicleType.Standard,
-            CurrentTime, distanceMeters, 1m);
+            CurrentTime, distanceMeters, 1m, false);
 
     private sealed class StubRideRequestStore(RideRequest? rideRequest) : IRideRequestStore
     {
@@ -115,6 +115,7 @@ public sealed class EvaluateDispatchCandidatesTests
         public bool WasCalled { get; private set; }
         public Task<IReadOnlyList<DispatchCandidateSnapshot>> FindWithinRadiusAsync(
             double pickupLatitude, double pickupLongitude, double radiusMeters,
+            DateTimeOffset requestedStartsAt, DateTimeOffset requestedEndsAt,
             CancellationToken cancellationToken)
         {
             WasCalled = true;

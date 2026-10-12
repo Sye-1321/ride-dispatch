@@ -11,6 +11,8 @@ public sealed class DispatchCandidateStore(DispatchDbContext dbContext) : IDispa
         double pickupLatitude,
         double pickupLongitude,
         double radiusMeters,
+        DateTimeOffset requestedStartsAt,
+        DateTimeOffset requestedEndsAt,
         CancellationToken cancellationToken)
     {
         var pickup = new Point(pickupLongitude, pickupLatitude) { SRID = 4326 };
@@ -35,7 +37,11 @@ public sealed class DispatchCandidateStore(DispatchDbContext dbContext) : IDispa
                 vehicle == null ? null : (VehicleType?)vehicle.Type,
                 location.RecordedAt,
                 location.Position.Distance(pickup),
-                standing == null ? null : (decimal?)standing.CommissionBalance))
+                standing == null ? null : (decimal?)standing.CommissionBalance,
+                dbContext.Assignments.Any(assignment =>
+                    assignment.DriverId == location.DriverId &&
+                    assignment.StartsAt < requestedEndsAt &&
+                    requestedStartsAt < assignment.EndsAt)))
             .ToListAsync(cancellationToken);
     }
 }
