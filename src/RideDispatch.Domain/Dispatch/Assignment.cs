@@ -14,6 +14,7 @@ public sealed class Assignment
         StartsAt = startsAt;
         EndsAt = endsAt;
         CreatedAt = createdAt;
+        Status = AssignmentStatus.Active;
     }
 
     public Guid Id { get; private set; }
@@ -23,6 +24,8 @@ public sealed class Assignment
     public DateTimeOffset StartsAt { get; private set; }
     public DateTimeOffset EndsAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
+    public AssignmentStatus Status { get; private set; }
+    public DateTimeOffset? ResolvedAt { get; private set; }
 
     public static Assignment Create(Guid offerId, Guid rideRequestId, Guid driverId,
         DateTimeOffset startsAt, TimeSpan duration, DateTimeOffset currentUtcTime)
@@ -38,5 +41,38 @@ public sealed class Assignment
 
         return new Assignment(Guid.CreateVersion7(), offerId, rideRequestId, driverId,
             normalizedStart, normalizedStart.Add(duration), createdAt);
+    }
+
+    public void Complete(DateTimeOffset currentUtcTime)
+    {
+        EnsureActive();
+        var resolvedAt = NormalizeResolution(currentUtcTime);
+        if (resolvedAt < StartsAt)
+            throw new InvalidOperationException("An assignment cannot complete before it starts.");
+
+        Status = AssignmentStatus.Completed;
+        ResolvedAt = resolvedAt;
+    }
+
+    public void Cancel(DateTimeOffset currentUtcTime)
+    {
+        EnsureActive();
+        var resolvedAt = NormalizeResolution(currentUtcTime);
+        Status = AssignmentStatus.Cancelled;
+        ResolvedAt = resolvedAt;
+    }
+
+    private void EnsureActive()
+    {
+        if (Status != AssignmentStatus.Active)
+            throw new InvalidOperationException("Only an active assignment can transition.");
+    }
+
+    private DateTimeOffset NormalizeResolution(DateTimeOffset currentUtcTime)
+    {
+        var resolvedAt = currentUtcTime.ToUniversalTime();
+        if (resolvedAt < CreatedAt)
+            throw new InvalidOperationException("An assignment cannot resolve before it was created.");
+        return resolvedAt;
     }
 }

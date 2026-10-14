@@ -148,6 +148,10 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("offer_id");
 
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
                     b.Property<Guid>("RideRequestId")
                         .HasColumnType("uuid")
                         .HasColumnName("ride_request_id");
@@ -155,6 +159,13 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("StartsAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("starts_at");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
 
                     b.HasKey("Id");
 
@@ -166,13 +177,20 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RideRequestId")
                         .IsUnique()
-                        .HasDatabaseName("ux_assignments_ride_request_id");
+                        .HasDatabaseName("ux_assignments_ride_request_id")
+                        .HasFilter("status <> 'Cancelled'");
 
                     b.ToTable("assignments", null, t =>
                         {
+                            t.HasCheckConstraint("ck_assignments_completed_not_before_start", "status <> 'Completed' OR resolved_at >= starts_at");
+
                             t.HasCheckConstraint("ck_assignments_ends_after_starts", "ends_at > starts_at");
 
+                            t.HasCheckConstraint("ck_assignments_resolved_not_before_created", "resolved_at IS NULL OR resolved_at >= created_at");
+
                             t.HasCheckConstraint("ck_assignments_starts_not_before_created", "starts_at >= created_at");
+
+                            t.HasCheckConstraint("ck_assignments_status_resolved", "(status = 'Active' AND resolved_at IS NULL) OR (status IN ('Completed', 'Cancelled') AND resolved_at IS NOT NULL)");
                         });
                 });
 

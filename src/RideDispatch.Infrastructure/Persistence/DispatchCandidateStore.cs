@@ -41,6 +41,7 @@ public sealed class DispatchCandidateStore(DispatchDbContext dbContext) : IDispa
                 location.Position.Distance(pickup),
                 standing == null ? null : (decimal?)standing.CommissionBalance,
                 dbContext.Assignments.Any(assignment =>
+                    assignment.Status == AssignmentStatus.Active &&
                     assignment.DriverId == location.DriverId &&
                     assignment.StartsAt < requestedEndsAt &&
                     requestedStartsAt < assignment.EndsAt),

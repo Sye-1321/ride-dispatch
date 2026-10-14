@@ -94,6 +94,48 @@ public sealed class CreateAssignmentTests
         Assert.Equal(0, store.SaveCount);
     }
 
+    [Fact]
+    public async Task Cancelled_assignment_for_same_offer_still_blocks_creation()
+    {
+        var (offer, run, ride) = Graph();
+        var cancelled = StubAssignmentStore.Fake();
+        cancelled.Cancel(Now);
+        var store = new StubAssignmentStore { ExistingOffer = cancelled };
+
+        var result = await CreateOperation(offer, run, ride, store, new(Now)).ExecuteAsync(offer.Id, default);
+
+        Assert.Equal(CreateAssignmentOutcome.AssignmentAlreadyExists, result.Outcome);
+        Assert.Equal(0, store.AddCount);
+    }
+
+    [Fact]
+    public async Task Cancelled_history_for_same_ride_does_not_block_creation()
+    {
+        var (offer, run, ride) = Graph();
+        var store = new StubAssignmentStore { HasCancelledRideHistory = true };
+
+        var result = await CreateOperation(offer, run, ride, store, new(Now)).ExecuteAsync(offer.Id, default);
+
+        Assert.Equal(CreateAssignmentOutcome.Success, result.Outcome);
+        Assert.Equal(1, store.AddCount);
+    }
+
+    [Theory]
+    [InlineData(AssignmentStatus.Active)]
+    [InlineData(AssignmentStatus.Completed)]
+    public async Task Non_cancelled_assignment_for_same_ride_blocks_creation(AssignmentStatus status)
+    {
+        var (offer, run, ride) = Graph();
+        var existing = StubAssignmentStore.Fake();
+        if (status == AssignmentStatus.Completed) existing.Complete(Now);
+        var store = new StubAssignmentStore { ExistingNonCancelledRide = existing };
+
+        var result = await CreateOperation(offer, run, ride, store, new(Now)).ExecuteAsync(offer.Id, default);
+
+        Assert.Equal(CreateAssignmentOutcome.AssignmentAlreadyExists, result.Outcome);
+        Assert.Equal(0, store.AddCount);
+    }
+
     [Theory]
     [InlineData(true, CreateAssignmentOutcome.AssignmentAlreadyExists)]
     [InlineData(false, CreateAssignmentOutcome.DriverScheduleConflict)]
@@ -176,16 +218,20 @@ public sealed class CreateAssignmentTests
     {
         public bool DuplicateOffer { get; init; }
         public bool DuplicateRide { get; init; }
+        public bool HasCancelledRideHistory { get; init; }
+        public Assignment? ExistingOffer { get; init; }
+        public Assignment? ExistingNonCancelledRide { get; init; }
         public bool Overlap { get; init; }
         public Exception? SaveException { get; init; }
         public int AddCount { get; private set; }
         public int SaveCount { get; private set; }
         public Task AddAsync(Assignment x, CancellationToken ct) { AddCount++; return Task.CompletedTask; }
+        public Task<Assignment?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult<Assignment?>(null);
         public Task<Assignment?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => Task.FromResult<Assignment?>(null);
-        public Task<Assignment?> FindByOfferIdAsync(Guid id, CancellationToken ct) => Task.FromResult(DuplicateOffer ? Fake() : null);
-        public Task<Assignment?> FindByRideRequestIdAsync(Guid id, CancellationToken ct) => Task.FromResult(DuplicateRide ? Fake() : null);
+        public Task<Assignment?> FindByOfferIdAsync(Guid id, CancellationToken ct) => Task.FromResult(ExistingOffer ?? (DuplicateOffer ? Fake() : null));
+        public Task<Assignment?> FindNonCancelledByRideRequestIdAsync(Guid id, CancellationToken ct) => Task.FromResult(ExistingNonCancelledRide ?? (DuplicateRide ? Fake() : null));
         public Task<bool> HasDriverOverlapAsync(Guid id, DateTimeOffset s, DateTimeOffset e, CancellationToken ct) => Task.FromResult(Overlap);
         public Task SaveChangesAsync(CancellationToken ct) { SaveCount++; return SaveException is null ? Task.CompletedTask : Task.FromException(SaveException); }
-        private static Assignment Fake() => Assignment.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Now, TimeSpan.FromMinutes(1), Now);
+        public static Assignment Fake() => Assignment.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Now, TimeSpan.FromMinutes(1), Now);
     }
 }

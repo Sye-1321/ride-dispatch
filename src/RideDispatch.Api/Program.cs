@@ -66,6 +66,8 @@ builder.Services.AddScoped<DeclineOffer>();
 builder.Services.AddScoped<WithdrawOffer>();
 builder.Services.AddScoped<CreateAssignment>();
 builder.Services.AddScoped<GetAssignment>();
+builder.Services.AddScoped<CompleteAssignment>();
+builder.Services.AddScoped<CancelAssignment>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services
     .AddHealthChecks()

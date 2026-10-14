@@ -33,7 +33,7 @@ public sealed class CreateAssignment(IOfferStore offerStore, IAllocationRunStore
             return new(CreateAssignmentOutcome.ScheduledPickupElapsed);
 
         if (await assignmentStore.FindByOfferIdAsync(offer.Id, cancellationToken) is not null ||
-            await assignmentStore.FindByRideRequestIdAsync(rideRequest.Id, cancellationToken) is not null)
+            await assignmentStore.FindNonCancelledByRideRequestIdAsync(rideRequest.Id, cancellationToken) is not null)
             return new(CreateAssignmentOutcome.AssignmentAlreadyExists);
         if (await assignmentStore.HasDriverOverlapAsync(offer.DriverId, window.StartsAt, window.EndsAt, cancellationToken))
             return new(CreateAssignmentOutcome.DriverScheduleConflict);
