@@ -11,4 +11,6 @@ public enum EligibilityRejectionReason
     FinancialStandingMissing,
     CommissionBalanceBelowMinimum,
     AssignmentConflict,
+    PreviousOfferDeclined,
+    PreviousOfferExpired,
 }

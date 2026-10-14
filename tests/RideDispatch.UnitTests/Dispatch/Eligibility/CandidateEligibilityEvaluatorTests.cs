@@ -126,6 +126,51 @@ public sealed class CandidateEligibilityEvaluatorTests
     }
 
     [Fact]
+    public void Declined_offer_history_is_rejected()
+    {
+        var evaluation = Evaluate(Candidate(hasPreviousDeclinedOffer: true));
+        Assert.Equal([EligibilityRejectionReason.PreviousOfferDeclined], evaluation.RejectionReasons);
+    }
+
+    [Fact]
+    public void Expired_offer_history_is_rejected()
+    {
+        var evaluation = Evaluate(Candidate(hasPreviousExpiredOffer: true));
+        Assert.Equal([EligibilityRejectionReason.PreviousOfferExpired], evaluation.RejectionReasons);
+    }
+
+    [Fact]
+    public void Both_offer_history_states_are_retained()
+    {
+        var evaluation = Evaluate(Candidate(
+            hasPreviousDeclinedOffer: true,
+            hasPreviousExpiredOffer: true));
+        Assert.Equal(
+            [EligibilityRejectionReason.PreviousOfferDeclined, EligibilityRejectionReason.PreviousOfferExpired],
+            evaluation.RejectionReasons);
+    }
+
+    [Fact]
+    public void Offer_history_coexists_with_other_rejection_reason()
+    {
+        var evaluation = Evaluate(Candidate(
+            approvalStatus: DriverApprovalStatus.Pending,
+            hasPreviousDeclinedOffer: true));
+        Assert.Contains(EligibilityRejectionReason.DriverNotApproved, evaluation.RejectionReasons);
+        Assert.Contains(EligibilityRejectionReason.PreviousOfferDeclined, evaluation.RejectionReasons);
+    }
+
+    [Fact]
+    public void Offer_history_coexists_with_assignment_conflict()
+    {
+        var evaluation = Evaluate(Candidate(
+            hasAssignmentConflict: true,
+            hasPreviousExpiredOffer: true));
+        Assert.Contains(EligibilityRejectionReason.AssignmentConflict, evaluation.RejectionReasons);
+        Assert.Contains(EligibilityRejectionReason.PreviousOfferExpired, evaluation.RejectionReasons);
+    }
+
+    [Fact]
     public void Multiple_simultaneous_failures_are_accumulated()
     {
         var evaluation = Evaluate(Candidate(
@@ -169,7 +214,10 @@ public sealed class CandidateEligibilityEvaluatorTests
         DriverOperationalStatus operationalStatus = DriverOperationalStatus.Available,
         VehicleType? vehicleType = VehicleType.Standard,
         DateTimeOffset? locationRecordedAt = null,
-        decimal? commissionBalance = 1m) =>
+        decimal? commissionBalance = 1m,
+        bool hasAssignmentConflict = false,
+        bool hasPreviousDeclinedOffer = false,
+        bool hasPreviousExpiredOffer = false) =>
         new(
             Guid.CreateVersion7(),
             approvalStatus,
@@ -179,5 +227,7 @@ public sealed class CandidateEligibilityEvaluatorTests
             locationRecordedAt ?? CurrentTime,
             100,
             commissionBalance,
-            false);
+            hasAssignmentConflict,
+            hasPreviousDeclinedOffer,
+            hasPreviousExpiredOffer);
 }

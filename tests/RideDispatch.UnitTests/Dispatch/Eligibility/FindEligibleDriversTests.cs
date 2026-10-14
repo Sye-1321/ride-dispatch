@@ -116,6 +116,8 @@ public sealed class FindEligibleDriversTests
             locationRecordedAt,
             distanceMeters,
             1m,
+            false,
+            false,
             false);
 
     private sealed class StubRideRequestStore(RideRequest? rideRequest) : IRideRequestStore
@@ -145,6 +147,7 @@ public sealed class FindEligibleDriversTests
         public double RadiusMeters { get; private set; }
 
         public Task<IReadOnlyList<DispatchCandidateSnapshot>> FindWithinRadiusAsync(
+            Guid rideRequestId,
             double pickupLatitude,
             double pickupLongitude,
             double radiusMeters,

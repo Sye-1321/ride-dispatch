@@ -57,6 +57,16 @@ public static class CandidateEligibilityEvaluator
             rejectionReasons.Add(EligibilityRejectionReason.AssignmentConflict);
         }
 
+        if (candidate.HasPreviousDeclinedOffer)
+        {
+            rejectionReasons.Add(EligibilityRejectionReason.PreviousOfferDeclined);
+        }
+
+        if (candidate.HasPreviousExpiredOffer)
+        {
+            rejectionReasons.Add(EligibilityRejectionReason.PreviousOfferExpired);
+        }
+
         return new(candidate, rejectionReasons);
     }
 }

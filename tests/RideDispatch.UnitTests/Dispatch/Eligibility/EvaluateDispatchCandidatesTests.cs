@@ -19,7 +19,8 @@ public sealed class EvaluateDispatchCandidatesTests
     public async Task Missing_ride_does_not_query_candidates()
     {
         var candidateStore = new StubCandidateStore([]);
-        var operation = CreateOperation(null, candidateStore, new FixedTimeProvider(CurrentTime));
+        var timeProvider = new FixedTimeProvider(CurrentTime);
+        var operation = CreateOperation(null, candidateStore, timeProvider);
 
         var result = await operation.ExecuteAsync(
             Guid.CreateVersion7(),
@@ -28,6 +29,7 @@ public sealed class EvaluateDispatchCandidatesTests
 
         Assert.Equal(EvaluateDispatchCandidatesOutcome.RideRequestNotFound, result.Outcome);
         Assert.False(candidateStore.WasCalled);
+        Assert.Equal(0, timeProvider.CallCount);
     }
 
     [Fact]
@@ -63,13 +65,14 @@ public sealed class EvaluateDispatchCandidatesTests
         var newerNearerId = Guid.CreateVersion7();
         var longerIdleId = Guid.CreateVersion7();
         var timeProvider = new FixedTimeProvider(CurrentTime);
+        var candidateStore = new StubCandidateStore(
+        [
+            Candidate(newerNearerId, DriverApprovalStatus.Approved, DriverOperationalStatus.Available, CurrentTime.AddMinutes(-5), 100),
+            Candidate(longerIdleId, DriverApprovalStatus.Approved, DriverOperationalStatus.Available, CurrentTime.AddHours(-1), 200),
+        ]);
         var operation = CreateOperation(
             rideRequest,
-            new StubCandidateStore(
-            [
-                Candidate(newerNearerId, DriverApprovalStatus.Approved, DriverOperationalStatus.Available, CurrentTime.AddMinutes(-5), 100),
-                Candidate(longerIdleId, DriverApprovalStatus.Approved, DriverOperationalStatus.Available, CurrentTime.AddHours(-1), 200),
-            ]),
+            candidateStore,
             timeProvider);
 
         var result = await operation.ExecuteAsync(
@@ -79,6 +82,7 @@ public sealed class EvaluateDispatchCandidatesTests
 
         Assert.Equal([longerIdleId, newerNearerId], result.RankedEligibleDrivers!.Select(driver => driver.DriverId));
         Assert.Equal(1, timeProvider.CallCount);
+        Assert.Equal(rideRequest.Id, candidateStore.RideRequestId);
     }
 
     private static EvaluateDispatchCandidates CreateOperation(
@@ -99,7 +103,7 @@ public sealed class EvaluateDispatchCandidatesTests
         DateTimeOffset? availableSince,
         double distanceMeters = 100) =>
         new(driverId, approval, status, availableSince, VehicleType.Standard,
-            CurrentTime, distanceMeters, 1m, false);
+            CurrentTime, distanceMeters, 1m, false, false, false);
 
     private sealed class StubRideRequestStore(RideRequest? rideRequest) : IRideRequestStore
     {
@@ -113,12 +117,15 @@ public sealed class EvaluateDispatchCandidatesTests
     private sealed class StubCandidateStore(IReadOnlyList<DispatchCandidateSnapshot> candidates) : IDispatchCandidateStore
     {
         public bool WasCalled { get; private set; }
+        public Guid? RideRequestId { get; private set; }
         public Task<IReadOnlyList<DispatchCandidateSnapshot>> FindWithinRadiusAsync(
+            Guid rideRequestId,
             double pickupLatitude, double pickupLongitude, double radiusMeters,
             DateTimeOffset requestedStartsAt, DateTimeOffset requestedEndsAt,
             CancellationToken cancellationToken)
         {
             WasCalled = true;
+            RideRequestId = rideRequestId;
             return Task.FromResult(candidates);
         }
     }

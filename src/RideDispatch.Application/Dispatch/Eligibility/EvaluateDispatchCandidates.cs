@@ -36,6 +36,7 @@ public sealed class EvaluateDispatchCandidates(
         var currentUtcTime = timeProvider.GetUtcNow();
         var occupancyWindow = RideOccupancyWindow.From(rideRequest, currentUtcTime);
         var candidates = await candidateStore.FindWithinRadiusAsync(
+            rideRequest.Id,
             rideRequest.PickupLatitude,
             rideRequest.PickupLongitude,
             policy.MaxRadiusMeters,

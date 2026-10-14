@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NetTopologySuite.Geometries;
 using RideDispatch.Application.Dispatch.Eligibility;
+using RideDispatch.Domain.Dispatch;
 using RideDispatch.Domain.Vehicles;
 
 namespace RideDispatch.Infrastructure.Persistence;
@@ -8,6 +9,7 @@ namespace RideDispatch.Infrastructure.Persistence;
 public sealed class DispatchCandidateStore(DispatchDbContext dbContext) : IDispatchCandidateStore
 {
     public async Task<IReadOnlyList<DispatchCandidateSnapshot>> FindWithinRadiusAsync(
+        Guid rideRequestId,
         double pickupLatitude,
         double pickupLongitude,
         double radiusMeters,
@@ -41,7 +43,19 @@ public sealed class DispatchCandidateStore(DispatchDbContext dbContext) : IDispa
                 dbContext.Assignments.Any(assignment =>
                     assignment.DriverId == location.DriverId &&
                     assignment.StartsAt < requestedEndsAt &&
-                    requestedStartsAt < assignment.EndsAt)))
+                    requestedStartsAt < assignment.EndsAt),
+                dbContext.Offers.Any(offer =>
+                    offer.DriverId == location.DriverId &&
+                    offer.Status == OfferStatus.Declined &&
+                    dbContext.AllocationRuns.Any(run =>
+                        run.Id == offer.AllocationRunId &&
+                        run.RideRequestId == rideRequestId)),
+                dbContext.Offers.Any(offer =>
+                    offer.DriverId == location.DriverId &&
+                    offer.Status == OfferStatus.Expired &&
+                    dbContext.AllocationRuns.Any(run =>
+                        run.Id == offer.AllocationRunId &&
+                        run.RideRequestId == rideRequestId))))
             .ToListAsync(cancellationToken);
     }
 }

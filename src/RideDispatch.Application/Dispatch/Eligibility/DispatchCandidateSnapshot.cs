@@ -12,4 +12,6 @@ public sealed record DispatchCandidateSnapshot(
     DateTimeOffset LocationRecordedAt,
     double DistanceMeters,
     decimal? CommissionBalance,
-    bool HasAssignmentConflict);
+    bool HasAssignmentConflict,
+    bool HasPreviousDeclinedOffer,
+    bool HasPreviousExpiredOffer);

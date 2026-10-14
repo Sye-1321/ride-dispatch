@@ -138,6 +138,8 @@ public sealed class CreateAllocationRunTests
             CurrentTime,
             distanceMeters,
             1m,
+            false,
+            false,
             false);
 
     private static DispatchCandidateSnapshot RejectedCandidate(Guid driverId) =>
@@ -150,6 +152,8 @@ public sealed class CreateAllocationRunTests
             CurrentTime,
             50,
             1m,
+            false,
+            false,
             false);
 
     private sealed class StubRideRequestStore(RideRequest? rideRequest) : IRideRequestStore
@@ -171,6 +175,7 @@ public sealed class CreateAllocationRunTests
         IReadOnlyList<DispatchCandidateSnapshot> candidates) : IDispatchCandidateStore
     {
         public Task<IReadOnlyList<DispatchCandidateSnapshot>> FindWithinRadiusAsync(
+            Guid rideRequestId,
             double pickupLatitude,
             double pickupLongitude,
             double radiusMeters,
