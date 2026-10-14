@@ -13,8 +13,9 @@ reasons. Dispatch also supports allocation runs, time-bounded driver offers, acc
 assignments, and database-backed protection against overlapping driver assignments. Assignment
 conflicts and declined/expired Offer history are retained in candidate evidence when allocating the
 same ride again. Failed Offers can drive an explicit, retry-safe replacement dispatch. Assignments
-support completion and cancellation; only active Assignments reserve driver schedules. Dispatcher/manual
-override and scheduled dispatch activation remain future work.
+support completion and cancellation; only active Assignments reserve driver schedules. A dispatcher may
+override the ranked recommendation by selecting another candidate already persisted as eligible, with a
+required audit reason; override does not bypass eligibility. Scheduled dispatch activation remains future work.
 
 Target stack: .NET 10 / ASP.NET Core / PostgreSQL / PostGIS.
 

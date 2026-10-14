@@ -59,6 +59,7 @@ builder.Services.AddScoped<AllocationRunCreator>();
 builder.Services.AddScoped<GetAllocationRun>();
 builder.Services.AddScoped<GetAllocationCandidateEvaluations>();
 builder.Services.AddScoped<CreateOffer>();
+builder.Services.AddScoped<CreateDispatcherOverrideOffer>();
 builder.Services.AddScoped<CreateReplacementDispatch>();
 builder.Services.AddScoped<GetOffer>();
 builder.Services.AddScoped<AcceptOffer>();

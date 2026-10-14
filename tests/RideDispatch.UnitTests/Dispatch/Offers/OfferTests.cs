@@ -14,10 +14,52 @@ public sealed class OfferTests
 
         Assert.Equal(7, offer.Id.Version);
         Assert.Equal(OfferStatus.Pending, offer.Status);
+        Assert.Equal(OfferSelectionMode.Recommended, offer.SelectionMode);
+        Assert.Null(offer.OverrideReason);
         Assert.Equal(TimeSpan.Zero, offer.CreatedAt.Offset);
         Assert.Equal(CurrentTime.ToUniversalTime(), offer.CreatedAt);
         Assert.Equal(offer.CreatedAt + Ttl, offer.ExpiresAt);
         Assert.Null(offer.ResolvedAt);
+    }
+
+    [Fact]
+    public void Dispatcher_override_captures_mode_and_trimmed_reason()
+    {
+        var offer = Offer.CreateDispatcherOverride(
+            Guid.NewGuid(), Guid.NewGuid(), "  Operational preference  ", Ttl, CurrentTime);
+        Assert.Equal(OfferSelectionMode.DispatcherOverride, offer.SelectionMode);
+        Assert.Equal("Operational preference", offer.OverrideReason);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Dispatcher_override_rejects_missing_reason(string? reason) =>
+        Assert.ThrowsAny<ArgumentException>(() => Offer.CreateDispatcherOverride(
+            Guid.NewGuid(), Guid.NewGuid(), reason!, Ttl, CurrentTime));
+
+    [Fact]
+    public void Dispatcher_override_rejects_reason_over_500_characters() =>
+        Assert.Throws<ArgumentException>(() => Offer.CreateDispatcherOverride(
+            Guid.NewGuid(), Guid.NewGuid(), new string('x', 501), Ttl, CurrentTime));
+
+    [Fact]
+    public void Dispatcher_override_accepts_exactly_500_characters()
+    {
+        var offer = Offer.CreateDispatcherOverride(
+            Guid.NewGuid(), Guid.NewGuid(), new string('x', 500), Ttl, CurrentTime);
+        Assert.Equal(500, offer.OverrideReason!.Length);
+    }
+
+    [Fact]
+    public void Dispatcher_override_uses_existing_lifecycle()
+    {
+        var offer = Offer.CreateDispatcherOverride(
+            Guid.NewGuid(), Guid.NewGuid(), "Alternate eligible driver", Ttl, CurrentTime);
+        offer.Decline(offer.ExpiresAt.AddTicks(-1));
+        Assert.Equal(OfferStatus.Declined, offer.Status);
+        Assert.Equal(offer.ExpiresAt.AddTicks(-1), offer.ResolvedAt);
     }
 
     [Theory]

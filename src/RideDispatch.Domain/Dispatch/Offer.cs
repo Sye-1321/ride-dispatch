@@ -6,11 +6,14 @@ public sealed class Offer
     {
     }
 
-    private Offer(Guid id, Guid allocationRunId, Guid driverId, DateTimeOffset createdAt, DateTimeOffset expiresAt)
+    private Offer(Guid id, Guid allocationRunId, Guid driverId, OfferSelectionMode selectionMode,
+        string? overrideReason, DateTimeOffset createdAt, DateTimeOffset expiresAt)
     {
         Id = id;
         AllocationRunId = allocationRunId;
         DriverId = driverId;
+        SelectionMode = selectionMode;
+        OverrideReason = overrideReason;
         Status = OfferStatus.Pending;
         CreatedAt = createdAt;
         ExpiresAt = expiresAt;
@@ -20,6 +23,8 @@ public sealed class Offer
     public Guid AllocationRunId { get; private set; }
     public Guid DriverId { get; private set; }
     public OfferStatus Status { get; private set; }
+    public OfferSelectionMode SelectionMode { get; private set; }
+    public string? OverrideReason { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset ExpiresAt { get; private set; }
     public DateTimeOffset? ResolvedAt { get; private set; }
@@ -41,8 +46,37 @@ public sealed class Offer
             throw new ArgumentOutOfRangeException(nameof(ttl), "Offer TTL must be greater than zero.");
         }
 
+        return CreateCore(allocationRunId, driverId, OfferSelectionMode.Recommended, null, ttl, currentUtcTime);
+    }
+
+    public static Offer CreateDispatcherOverride(Guid allocationRunId, Guid driverId, string reason,
+        TimeSpan ttl, DateTimeOffset currentUtcTime)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        var normalizedReason = reason.Trim();
+        if (normalizedReason.Length == 0)
+            throw new ArgumentException("Override reason must not be empty or whitespace.", nameof(reason));
+        if (normalizedReason.Length > 500)
+            throw new ArgumentException("Override reason must not exceed 500 characters.", nameof(reason));
+
+        return CreateCore(allocationRunId, driverId, OfferSelectionMode.DispatcherOverride,
+            normalizedReason, ttl, currentUtcTime);
+    }
+
+    private static Offer CreateCore(Guid allocationRunId, Guid driverId,
+        OfferSelectionMode selectionMode, string? overrideReason, TimeSpan ttl,
+        DateTimeOffset currentUtcTime)
+    {
+        if (allocationRunId == Guid.Empty)
+            throw new ArgumentException("Allocation run ID must not be empty.", nameof(allocationRunId));
+        if (driverId == Guid.Empty)
+            throw new ArgumentException("Driver ID must not be empty.", nameof(driverId));
+        if (ttl <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(ttl), "Offer TTL must be greater than zero.");
+
         var createdAt = currentUtcTime.ToUniversalTime();
-        return new Offer(Guid.CreateVersion7(), allocationRunId, driverId, createdAt, createdAt.Add(ttl));
+        return new Offer(Guid.CreateVersion7(), allocationRunId, driverId, selectionMode,
+            overrideReason, createdAt, createdAt.Add(ttl));
     }
 
     public void Accept(DateTimeOffset currentUtcTime) => Resolve(OfferStatus.Accepted, currentUtcTime, false);

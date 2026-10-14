@@ -216,9 +216,20 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
+                    b.Property<string>("OverrideReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("override_reason");
+
                     b.Property<DateTimeOffset?>("ResolvedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("resolved_at");
+
+                    b.Property<string>("SelectionMode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("selection_mode");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -239,6 +250,8 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_offers_expires_after_created", "expires_at > created_at");
 
                             t.HasCheckConstraint("ck_offers_resolved_not_before_created", "resolved_at IS NULL OR resolved_at >= created_at");
+
+                            t.HasCheckConstraint("ck_offers_selection_override_reason", "(selection_mode = 'Recommended' AND override_reason IS NULL) OR (selection_mode = 'DispatcherOverride' AND override_reason IS NOT NULL AND length(btrim(override_reason)) > 0)");
 
                             t.HasCheckConstraint("ck_offers_status_resolved", "(status = 'Pending' AND resolved_at IS NULL) OR (status <> 'Pending' AND resolved_at IS NOT NULL)");
                         });

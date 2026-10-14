@@ -37,6 +37,8 @@ public sealed class CreateOfferTests
         var result = await CreateUseCase(run, store).ExecuteAsync(run.Id, CancellationToken.None);
         Assert.Equal(CreateOfferOutcome.Success, result.Outcome);
         Assert.Equal(driverId, store.Added!.DriverId);
+        Assert.Equal(OfferSelectionMode.Recommended, store.Added.SelectionMode);
+        Assert.Null(store.Added.OverrideReason);
         Assert.Equal(TimeSpan.FromSeconds(37), store.Added.ExpiresAt - store.Added.CreatedAt);
         Assert.Equal(1, store.AddCount);
         Assert.Equal(1, store.SaveCount);
