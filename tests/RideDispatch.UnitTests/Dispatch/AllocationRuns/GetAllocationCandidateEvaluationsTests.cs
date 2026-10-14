@@ -48,6 +48,8 @@ public sealed class GetAllocationCandidateEvaluationsTests
     private sealed class StubStore(
         IReadOnlyList<AllocationCandidateEvaluation>? evaluations) : IAllocationRunStore
     {
+        public Task<AllocationRun?> FindBySourceOfferIdAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
         public Task<IReadOnlyList<AllocationCandidateEvaluation>?> FindCandidateEvaluationsAsync(
             Guid allocationRunId,
             CancellationToken cancellationToken) =>

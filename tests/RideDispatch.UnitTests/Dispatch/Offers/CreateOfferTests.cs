@@ -70,6 +70,7 @@ public sealed class CreateOfferTests
     private sealed class StubAllocationRunStore(AllocationRun? run) : IAllocationRunStore
     {
         public Task<AllocationRun?> FindByIdAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(run?.Id == id ? run : null);
+        public Task<AllocationRun?> FindBySourceOfferIdAsync(Guid id, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task AddAsync(AllocationRun allocationRun, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<AllocationCandidateEvaluation>?> FindCandidateEvaluationsAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task SaveChangesAsync(CancellationToken cancellationToken) => throw new NotSupportedException();

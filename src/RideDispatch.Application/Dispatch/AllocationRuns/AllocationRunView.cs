@@ -7,6 +7,7 @@ public sealed record AllocationRunView(
     Guid RideRequestId,
     DispatchRankingPolicy RankingPolicy,
     Guid? RecommendedDriverId,
+    Guid? SourceOfferId,
     DateTimeOffset CreatedAt)
 {
     public static AllocationRunView FromAllocationRun(AllocationRun allocationRun) =>
@@ -15,5 +16,6 @@ public sealed record AllocationRunView(
             allocationRun.RideRequestId,
             allocationRun.RankingPolicy,
             allocationRun.RecommendedDriverId,
+            allocationRun.SourceOfferId,
             allocationRun.CreatedAt);
 }

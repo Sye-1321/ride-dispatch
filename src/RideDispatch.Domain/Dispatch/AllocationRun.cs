@@ -13,12 +13,14 @@ public sealed class AllocationRun
         Guid rideRequestId,
         DispatchRankingPolicy rankingPolicy,
         Guid? recommendedDriverId,
+        Guid? sourceOfferId,
         DateTimeOffset createdAt)
     {
         Id = id;
         RideRequestId = rideRequestId;
         RankingPolicy = rankingPolicy;
         RecommendedDriverId = recommendedDriverId;
+        SourceOfferId = sourceOfferId;
         CreatedAt = createdAt;
     }
 
@@ -29,6 +31,8 @@ public sealed class AllocationRun
     public DispatchRankingPolicy RankingPolicy { get; private set; }
 
     public Guid? RecommendedDriverId { get; private set; }
+
+    public Guid? SourceOfferId { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -63,7 +67,25 @@ public sealed class AllocationRun
             rideRequestId,
             rankingPolicy,
             recommendedDriverId,
+            null,
             currentUtcTime.ToUniversalTime());
+    }
+
+    public static AllocationRun CreateReplacement(
+        Guid rideRequestId,
+        DispatchRankingPolicy rankingPolicy,
+        Guid? recommendedDriverId,
+        Guid sourceOfferId,
+        DateTimeOffset currentUtcTime)
+    {
+        if (sourceOfferId == Guid.Empty)
+        {
+            throw new ArgumentException("Source offer ID must not be empty.", nameof(sourceOfferId));
+        }
+
+        var run = Create(rideRequestId, rankingPolicy, recommendedDriverId, currentUtcTime);
+        run.SourceOfferId = sourceOfferId;
+        return run;
     }
 
     public void AddCandidateEvaluation(AllocationCandidateEvaluation evaluation)

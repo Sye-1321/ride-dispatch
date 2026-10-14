@@ -36,6 +36,9 @@ public sealed class GetAllocationRunTests
         public Task<AllocationRun?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
             Task.FromResult(allocationRun?.Id == id ? allocationRun : null);
 
+        public Task<AllocationRun?> FindBySourceOfferIdAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Task<IReadOnlyList<AllocationCandidateEvaluation>?> FindCandidateEvaluationsAsync(
             Guid allocationRunId,
             CancellationToken cancellationToken) =>

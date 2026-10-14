@@ -160,6 +160,7 @@ public sealed class CreateAssignmentTests
     private sealed class RunStoreStub(AllocationRun? value) : IAllocationRunStore
     {
         public Task<AllocationRun?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(value?.Id == id ? value : null);
+        public Task<AllocationRun?> FindBySourceOfferIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(AllocationRun x, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<AllocationCandidateEvaluation>?> FindCandidateEvaluationsAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task SaveChangesAsync(CancellationToken ct) => throw new NotSupportedException();

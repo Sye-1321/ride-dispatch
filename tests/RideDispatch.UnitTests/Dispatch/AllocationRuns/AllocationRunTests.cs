@@ -24,7 +24,33 @@ public sealed class AllocationRunTests
         Assert.Equal(rideRequestId, run.RideRequestId);
         Assert.Equal(DispatchRankingPolicy.LongestIdle, run.RankingPolicy);
         Assert.Equal(driverId, run.RecommendedDriverId);
+        Assert.Null(run.SourceOfferId);
         Assert.Equal(CurrentTime.ToUniversalTime(), run.CreatedAt);
+    }
+
+    [Fact]
+    public void Replacement_creation_captures_source_offer()
+    {
+        var sourceOfferId = Guid.CreateVersion7();
+        var run = AllocationRun.CreateReplacement(
+            Guid.CreateVersion7(),
+            DispatchRankingPolicy.Nearest,
+            null,
+            sourceOfferId,
+            CurrentTime);
+
+        Assert.Equal(sourceOfferId, run.SourceOfferId);
+    }
+
+    [Fact]
+    public void Replacement_creation_rejects_empty_source_offer()
+    {
+        Assert.Throws<ArgumentException>(() => AllocationRun.CreateReplacement(
+            Guid.CreateVersion7(),
+            DispatchRankingPolicy.Nearest,
+            null,
+            Guid.Empty,
+            CurrentTime));
     }
 
     [Fact]

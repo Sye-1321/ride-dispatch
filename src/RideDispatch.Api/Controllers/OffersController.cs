@@ -40,6 +40,23 @@ public sealed class OffersController : ControllerBase
     public async Task<ActionResult<OfferResponse>> Withdraw(Guid offerId, [FromServices] WithdrawOffer useCase, CancellationToken cancellationToken) =>
         MapTransition(await useCase.ExecuteAsync(offerId, cancellationToken));
 
+    [HttpPost("offers/{offerId:guid}/replacement-dispatch")]
+    public async Task<ActionResult<ReplacementDispatchResponse>> CreateReplacement(
+        Guid offerId,
+        [FromServices] CreateReplacementDispatch useCase,
+        CancellationToken cancellationToken)
+    {
+        var result = await useCase.ExecuteAsync(offerId, cancellationToken);
+        return result.Outcome switch
+        {
+            CreateReplacementDispatchOutcome.Success => Ok(
+                ReplacementDispatchResponse.FromResult(result)),
+            CreateReplacementDispatchOutcome.OfferNotFound => NotFound(),
+            CreateReplacementDispatchOutcome.SourceOfferNotFailed => Conflict(),
+            _ => throw new InvalidOperationException("Unknown replacement dispatch outcome."),
+        };
+    }
+
     private ActionResult<OfferResponse> MapTransition(TransitionOfferResult result) => result.Outcome switch
     {
         TransitionOfferOutcome.Success => Ok(OfferResponse.FromView(result.Offer!)),
@@ -47,6 +64,18 @@ public sealed class OffersController : ControllerBase
         TransitionOfferOutcome.OfferExpired or TransitionOfferOutcome.InvalidState => Conflict(result.Offer is null ? null : OfferResponse.FromView(result.Offer)),
         _ => throw new InvalidOperationException("Unknown offer transition outcome."),
     };
+}
+
+public sealed record ReplacementDispatchResponse(
+    Guid SourceOfferId,
+    AllocationRunResponse AllocationRun,
+    OfferResponse? Offer)
+{
+    public static ReplacementDispatchResponse FromResult(CreateReplacementDispatchResult result) =>
+        new(
+            result.SourceOfferId,
+            AllocationRunResponse.FromView(result.AllocationRun!),
+            result.Offer is null ? null : OfferResponse.FromView(result.Offer));
 }
 
 public sealed record OfferResponse(Guid Id, Guid AllocationRunId, Guid DriverId, OfferStatus Status, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, DateTimeOffset? ResolvedAt)

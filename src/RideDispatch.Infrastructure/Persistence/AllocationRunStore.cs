@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using RideDispatch.Application.Dispatch.AllocationRuns;
 using RideDispatch.Domain.Dispatch;
 
@@ -13,6 +14,11 @@ public sealed class AllocationRunStore(DispatchDbContext dbContext) : IAllocatio
         dbContext.AllocationRuns
             .AsNoTracking()
             .SingleOrDefaultAsync(allocationRun => allocationRun.Id == id, cancellationToken);
+
+    public Task<AllocationRun?> FindBySourceOfferIdAsync(Guid sourceOfferId, CancellationToken cancellationToken) =>
+        dbContext.AllocationRuns
+            .AsNoTracking()
+            .SingleOrDefaultAsync(allocationRun => allocationRun.SourceOfferId == sourceOfferId, cancellationToken);
 
     public async Task<IReadOnlyList<AllocationCandidateEvaluation>?> FindCandidateEvaluationsAsync(
         Guid allocationRunId,
@@ -36,6 +42,21 @@ public sealed class AllocationRunStore(DispatchDbContext dbContext) : IAllocatio
             .ToListAsync(cancellationToken);
     }
 
-    public async Task SaveChangesAsync(CancellationToken cancellationToken) =>
-        await dbContext.SaveChangesAsync(cancellationToken);
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (
+            exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+                ConstraintName: "ux_allocation_runs_source_offer_id",
+            })
+        {
+            dbContext.ChangeTracker.Clear();
+            throw new ReplacementAllocationRunAlreadyExistsException(exception);
+        }
+    }
 }

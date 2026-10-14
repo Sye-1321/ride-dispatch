@@ -31,6 +31,9 @@ public sealed class AllocationRunConfiguration : IEntityTypeConfiguration<Alloca
         builder.Property(allocationRun => allocationRun.RecommendedDriverId)
             .HasColumnName("recommended_driver_id");
 
+        builder.Property(allocationRun => allocationRun.SourceOfferId)
+            .HasColumnName("source_offer_id");
+
         builder.Property(allocationRun => allocationRun.CreatedAt)
             .HasColumnName("created_at")
             .HasColumnType("timestamp with time zone")
@@ -44,6 +47,15 @@ public sealed class AllocationRunConfiguration : IEntityTypeConfiguration<Alloca
         builder.HasOne<Driver>()
             .WithMany()
             .HasForeignKey(allocationRun => allocationRun.RecommendedDriverId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(allocationRun => allocationRun.SourceOfferId)
+            .IsUnique()
+            .HasDatabaseName("ux_allocation_runs_source_offer_id");
+
+        builder.HasOne<Offer>()
+            .WithMany()
+            .HasForeignKey(allocationRun => allocationRun.SourceOfferId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.Navigation(allocationRun => allocationRun.CandidateEvaluations)

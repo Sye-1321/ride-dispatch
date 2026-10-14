@@ -109,11 +109,19 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("ride_request_id");
 
+                    b.Property<Guid?>("SourceOfferId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_offer_id");
+
                     b.HasKey("Id");
 
                     b.HasIndex("RecommendedDriverId");
 
                     b.HasIndex("RideRequestId");
+
+                    b.HasIndex("SourceOfferId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_allocation_runs_source_offer_id");
 
                     b.ToTable("allocation_runs", (string)null);
                 });
@@ -467,6 +475,11 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                         .HasForeignKey("RideRequestId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("RideDispatch.Domain.Dispatch.Offer", null)
+                        .WithMany()
+                        .HasForeignKey("SourceOfferId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("RideDispatch.Domain.Dispatch.Assignment", b =>

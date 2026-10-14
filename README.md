@@ -11,9 +11,9 @@ location freshness/radius, and commission standing. Eligible drivers are ranked 
 or LONGEST_IDLE order. Allocation runs persist recommendations, candidate evidence, and rejection
 reasons. Dispatch also supports allocation runs, time-bounded driver offers, accepted-offer
 assignments, and database-backed protection against overlapping driver assignments. Assignment
-conflicts are retained in the existing candidate evidence. Assignment cancellation/completion,
-and declined/expired Offers are remembered when allocating the same ride again. Automatic
-replacement dispatch, dispatcher/manual override, and scheduled dispatch activation remain future work.
+conflicts and declined/expired Offer history are retained in candidate evidence when allocating the
+same ride again. Failed Offers can drive an explicit, retry-safe replacement dispatch. Assignment
+cancellation/completion, dispatcher/manual override, and scheduled dispatch activation remain future work.
 
 Target stack: .NET 10 / ASP.NET Core / PostgreSQL / PostGIS.
 

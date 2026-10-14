@@ -28,6 +28,7 @@ public sealed class OfferStore(DispatchDbContext dbContext) : IOfferStore
         catch (DbUpdateException exception) when (
             exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "ux_offers_allocation_run_id" })
         {
+            dbContext.ChangeTracker.Clear();
             throw new OfferAlreadyExistsException(exception);
         }
     }

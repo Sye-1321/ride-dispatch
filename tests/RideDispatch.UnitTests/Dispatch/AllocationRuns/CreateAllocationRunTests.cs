@@ -103,10 +103,10 @@ public sealed class CreateAllocationRunTests
             new StubCandidateStore(candidates),
             EligibilityPolicy,
             new FixedTimeProvider(CurrentTime));
-        return new CreateAllocationRun(
+        return new CreateAllocationRun(new AllocationRunCreator(
             evaluateDispatchCandidates,
             allocationRunStore,
-            new FixedTimeProvider(CurrentTime));
+            new FixedTimeProvider(CurrentTime)));
     }
 
     private static RideRequest CreateRideRequest() =>
@@ -201,6 +201,9 @@ public sealed class CreateAllocationRunTests
         }
 
         public Task<AllocationRun?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AllocationRun?> FindBySourceOfferIdAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task<IReadOnlyList<AllocationCandidateEvaluation>?> FindCandidateEvaluationsAsync(
