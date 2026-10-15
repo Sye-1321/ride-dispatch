@@ -134,6 +134,9 @@ public sealed class CreateRideRequestTests
         public Task<RideRequest?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
+        public Task<RideRequest?> FindByIdTrackedAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Task<IReadOnlyList<RideRequest>> ListAsync(CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 

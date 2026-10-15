@@ -15,7 +15,8 @@ conflicts and declined/expired Offer history are retained in candidate evidence 
 same ride again. Failed Offers can drive an explicit, retry-safe replacement dispatch. Assignments
 support completion and cancellation; only active Assignments reserve driver schedules. A dispatcher may
 override the ranked recommendation by selecting another candidate already persisted as eligible, with a
-required audit reason; override does not bypass eligibility. Scheduled dispatch activation remains future work.
+required audit reason; override does not bypass eligibility. Scheduled rides require explicit, persisted,
+retry-safe dispatch activation within a configurable lead window before AllocationRuns can be created.
 
 Target stack: .NET 10 / ASP.NET Core / PostgreSQL / PostGIS.
 

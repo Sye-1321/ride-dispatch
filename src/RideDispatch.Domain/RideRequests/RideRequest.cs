@@ -70,6 +70,45 @@ public sealed class RideRequest
 
     public DateTimeOffset CreatedAt { get; private set; }
 
+    public DateTimeOffset? DispatchActivatedAt { get; private set; }
+
+    public void ActivateDispatch(DateTimeOffset currentUtcTime, TimeSpan activationLeadTime)
+    {
+        if (Timing != RideTiming.Scheduled)
+        {
+            throw new InvalidOperationException("Dispatch activation applies only to scheduled rides.");
+        }
+
+        if (DispatchActivatedAt is not null)
+        {
+            throw new InvalidOperationException("Scheduled dispatch has already been activated.");
+        }
+
+        if (activationLeadTime <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(activationLeadTime));
+        }
+
+        var activatedAt = currentUtcTime.ToUniversalTime();
+        var pickupAt = RequestedPickupAt!.Value;
+        if (activatedAt < CreatedAt)
+        {
+            throw new InvalidOperationException("Dispatch activation cannot precede ride creation.");
+        }
+
+        if (activatedAt < pickupAt - activationLeadTime)
+        {
+            throw new InvalidOperationException("The scheduled dispatch activation window has not opened.");
+        }
+
+        if (activatedAt > pickupAt)
+        {
+            throw new InvalidOperationException("The scheduled pickup time has elapsed.");
+        }
+
+        DispatchActivatedAt = activatedAt;
+    }
+
     public static RideRequest Create(
         Guid? passengerId,
         string contactName,

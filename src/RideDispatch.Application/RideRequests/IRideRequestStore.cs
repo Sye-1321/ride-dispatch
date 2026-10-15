@@ -8,6 +8,8 @@ public interface IRideRequestStore
 
     Task<RideRequest?> FindByIdAsync(Guid id, CancellationToken cancellationToken);
 
+    Task<RideRequest?> FindByIdTrackedAsync(Guid id, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<RideRequest>> ListAsync(CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);

@@ -349,6 +349,11 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                         .HasColumnType("double precision")
                         .HasColumnName("destination_longitude");
 
+                    b.Property<DateTimeOffset?>("DispatchActivatedAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("dispatch_activated_at");
+
                     b.Property<int>("EstimatedTripDurationSeconds")
                         .HasColumnType("integer")
                         .HasColumnName("estimated_trip_duration_seconds");
@@ -387,6 +392,12 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
 
                     b.ToTable("ride_requests", null, t =>
                         {
+                            t.HasCheckConstraint("ck_ride_requests_dispatch_activation_after_creation", "dispatch_activated_at IS NULL OR dispatch_activated_at >= created_at");
+
+                            t.HasCheckConstraint("ck_ride_requests_dispatch_activation_before_pickup", "dispatch_activated_at IS NULL OR dispatch_activated_at <= requested_pickup_at");
+
+                            t.HasCheckConstraint("ck_ride_requests_dispatch_activation_scheduled", "dispatch_activated_at IS NULL OR timing = 'Scheduled'");
+
                             t.HasCheckConstraint("ck_ride_requests_estimated_trip_duration_positive", "estimated_trip_duration_seconds > 0");
 
                             t.HasCheckConstraint("ck_ride_requests_timing_requested_pickup_consistency", "(timing = 'Immediate' AND requested_pickup_at IS NULL) OR (timing = 'Scheduled' AND requested_pickup_at IS NOT NULL)");

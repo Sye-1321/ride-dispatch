@@ -20,6 +20,15 @@ public sealed class RideRequestConfiguration : IEntityTypeConfiguration<RideRequ
                     "ck_ride_requests_timing_requested_pickup_consistency",
                     "(timing = 'Immediate' AND requested_pickup_at IS NULL) OR " +
                     "(timing = 'Scheduled' AND requested_pickup_at IS NOT NULL)");
+                table.HasCheckConstraint(
+                    "ck_ride_requests_dispatch_activation_scheduled",
+                    "dispatch_activated_at IS NULL OR timing = 'Scheduled'");
+                table.HasCheckConstraint(
+                    "ck_ride_requests_dispatch_activation_after_creation",
+                    "dispatch_activated_at IS NULL OR dispatch_activated_at >= created_at");
+                table.HasCheckConstraint(
+                    "ck_ride_requests_dispatch_activation_before_pickup",
+                    "dispatch_activated_at IS NULL OR dispatch_activated_at <= requested_pickup_at");
             });
 
         builder.HasKey(rideRequest => rideRequest.Id);
@@ -91,6 +100,11 @@ public sealed class RideRequestConfiguration : IEntityTypeConfiguration<RideRequ
             .HasColumnName("created_at")
             .HasColumnType("timestamp with time zone")
             .IsRequired();
+
+        builder.Property(rideRequest => rideRequest.DispatchActivatedAt)
+            .HasColumnName("dispatch_activated_at")
+            .HasColumnType("timestamp with time zone")
+            .IsConcurrencyToken();
 
         builder.HasOne<Passenger>()
             .WithMany()

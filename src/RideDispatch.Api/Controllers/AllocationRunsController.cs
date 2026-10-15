@@ -30,6 +30,8 @@ public sealed class AllocationRunsController : ControllerBase
                 new { allocationRunId = result.AllocationRun!.Id },
                 AllocationRunResponse.FromView(result.AllocationRun)),
             CreateAllocationRunOutcome.RideRequestNotFound => NotFound(),
+            CreateAllocationRunOutcome.ScheduledDispatchNotActivated => Conflict(),
+            CreateAllocationRunOutcome.ScheduledPickupElapsed => Conflict(),
             _ => throw new InvalidOperationException("Unknown allocation-run creation outcome."),
         };
     }

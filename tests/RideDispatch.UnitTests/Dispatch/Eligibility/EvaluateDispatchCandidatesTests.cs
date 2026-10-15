@@ -109,6 +109,8 @@ public sealed class EvaluateDispatchCandidatesTests
     {
         public Task<RideRequest?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
             Task.FromResult(rideRequest?.Id == id ? rideRequest : null);
+        public Task<RideRequest?> FindByIdTrackedAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
         public Task AddAsync(RideRequest rideRequest, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<RideRequest>> ListAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task SaveChangesAsync(CancellationToken cancellationToken) => throw new NotSupportedException();

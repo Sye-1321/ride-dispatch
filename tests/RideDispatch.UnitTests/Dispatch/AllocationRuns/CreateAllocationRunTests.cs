@@ -93,20 +93,70 @@ public sealed class CreateAllocationRunTests
         Assert.Equal(1, store.SaveCallCount);
     }
 
+    [Fact]
+    public async Task Unactivated_scheduled_ride_is_rejected_without_creating_run()
+    {
+        var rideRequest = CreateScheduledRideRequest(CurrentTime.AddHours(1));
+        var store = new CapturingAllocationRunStore();
+        var result = await CreateUseCase(rideRequest, [], store).ExecuteAsync(
+            rideRequest.Id, DispatchRankingPolicy.Nearest, CancellationToken.None);
+
+        Assert.Equal(CreateAllocationRunOutcome.ScheduledDispatchNotActivated, result.Outcome);
+        Assert.Equal(0, store.AddCallCount);
+        Assert.Equal(0, store.SaveCallCount);
+    }
+
+    [Fact]
+    public async Task Activated_scheduled_ride_before_pickup_creates_run()
+    {
+        var rideRequest = CreateScheduledRideRequest(CurrentTime.AddMinutes(10));
+        rideRequest.ActivateDispatch(CurrentTime, TimeSpan.FromMinutes(15));
+        var store = new CapturingAllocationRunStore();
+
+        var result = await CreateUseCase(rideRequest, [], store).ExecuteAsync(
+            rideRequest.Id, DispatchRankingPolicy.Nearest, CancellationToken.None);
+
+        Assert.Equal(CreateAllocationRunOutcome.Success, result.Outcome);
+        Assert.Equal(1, store.SaveCallCount);
+    }
+
+    [Fact]
+    public async Task Activated_scheduled_ride_after_pickup_is_rejected_without_creating_run()
+    {
+        var pickup = CurrentTime.AddMinutes(-1);
+        var rideRequest = RideRequest.Create(
+            null, "Hana Gebru", "+251911000000", BookingSource.CallCenter,
+            RideTiming.Scheduled, 9.03, 38.74, 9.01, 38.78, VehicleType.Standard,
+            pickup, 1200, CurrentTime.AddMinutes(-20));
+        rideRequest.ActivateDispatch(CurrentTime.AddMinutes(-10), TimeSpan.FromMinutes(15));
+        var store = new CapturingAllocationRunStore();
+
+        var result = await CreateUseCase(rideRequest, [], store).ExecuteAsync(
+            rideRequest.Id, DispatchRankingPolicy.Nearest, CancellationToken.None);
+
+        Assert.Equal(CreateAllocationRunOutcome.ScheduledPickupElapsed, result.Outcome);
+        Assert.Equal(0, store.AddCallCount);
+        Assert.Equal(0, store.SaveCallCount);
+    }
+
     private static CreateAllocationRun CreateUseCase(
         RideRequest? rideRequest,
         IReadOnlyList<DispatchCandidateSnapshot> candidates,
         CapturingAllocationRunStore allocationRunStore)
     {
+        var rideRequestStore = new StubRideRequestStore(rideRequest);
         var evaluateDispatchCandidates = new EvaluateDispatchCandidates(
-            new StubRideRequestStore(rideRequest),
+            rideRequestStore,
             new StubCandidateStore(candidates),
             EligibilityPolicy,
             new FixedTimeProvider(CurrentTime));
-        return new CreateAllocationRun(new AllocationRunCreator(
-            evaluateDispatchCandidates,
-            allocationRunStore,
-            new FixedTimeProvider(CurrentTime)));
+        return new CreateAllocationRun(
+            new AllocationRunCreator(
+                evaluateDispatchCandidates,
+                allocationRunStore,
+                new FixedTimeProvider(CurrentTime)),
+            rideRequestStore,
+            new FixedTimeProvider(CurrentTime));
     }
 
     private static RideRequest CreateRideRequest() =>
@@ -124,6 +174,12 @@ public sealed class CreateAllocationRunTests
             null,
             1200,
             CurrentTime);
+
+    private static RideRequest CreateScheduledRideRequest(DateTimeOffset pickupAt) =>
+        RideRequest.Create(
+            null, "Hana Gebru", "+251911000000", BookingSource.CallCenter,
+            RideTiming.Scheduled, 9.03, 38.74, 9.01, 38.78, VehicleType.Standard,
+            pickupAt, 1200, CurrentTime.AddMinutes(-1));
 
     private static DispatchCandidateSnapshot Candidate(
         Guid driverId,
@@ -160,6 +216,9 @@ public sealed class CreateAllocationRunTests
     {
         public Task<RideRequest?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
             Task.FromResult(rideRequest?.Id == id ? rideRequest : null);
+
+        public Task<RideRequest?> FindByIdTrackedAsync(Guid id, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
 
         public Task AddAsync(RideRequest rideRequest, CancellationToken cancellationToken) =>
             throw new NotSupportedException();

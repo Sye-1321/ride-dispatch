@@ -49,6 +49,26 @@ public sealed class RideRequestsController : ControllerBase
         return rideRequest is null ? NotFound() : Ok(RideRequestResponse.FromView(rideRequest));
     }
 
+    [HttpPost("{id:guid}/activate-dispatch")]
+    public async Task<ActionResult<RideRequestResponse>> ActivateDispatch(
+        Guid id,
+        [FromServices] ActivateScheduledDispatch useCase,
+        CancellationToken cancellationToken)
+    {
+        var result = await useCase.ExecuteAsync(id, cancellationToken);
+        return result.Outcome switch
+        {
+            ActivateScheduledDispatchOutcome.Success or
+            ActivateScheduledDispatchOutcome.AlreadyActivated =>
+                Ok(RideRequestResponse.FromView(result.RideRequest!)),
+            ActivateScheduledDispatchOutcome.RideRequestNotFound => NotFound(),
+            ActivateScheduledDispatchOutcome.RideNotScheduled or
+            ActivateScheduledDispatchOutcome.ActivationTooEarly or
+            ActivateScheduledDispatchOutcome.ScheduledPickupElapsed => Conflict(),
+            _ => throw new InvalidOperationException("Unknown scheduled-dispatch activation outcome."),
+        };
+    }
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<RideRequestResponse>>> List(
         [FromServices] ListRideRequests useCase,
@@ -103,7 +123,8 @@ public sealed record RideRequestResponse(
     VehicleType RequiredVehicleType,
     DateTimeOffset? RequestedPickupAt,
     int EstimatedTripDurationSeconds,
-    DateTimeOffset CreatedAt)
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? DispatchActivatedAt)
 {
     public static RideRequestResponse FromView(RideRequestView rideRequest) =>
         new(
@@ -120,5 +141,6 @@ public sealed record RideRequestResponse(
             rideRequest.RequiredVehicleType,
             rideRequest.RequestedPickupAt,
             rideRequest.EstimatedTripDurationSeconds,
-            rideRequest.CreatedAt);
+            rideRequest.CreatedAt,
+            rideRequest.DispatchActivatedAt);
 }

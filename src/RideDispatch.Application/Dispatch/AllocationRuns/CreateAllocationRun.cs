@@ -1,4 +1,6 @@
+using RideDispatch.Application.RideRequests;
 using RideDispatch.Domain.Dispatch;
+using RideDispatch.Domain.RideRequests;
 
 namespace RideDispatch.Application.Dispatch.AllocationRuns;
 
@@ -6,6 +8,8 @@ public enum CreateAllocationRunOutcome
 {
     Success,
     RideRequestNotFound,
+    ScheduledDispatchNotActivated,
+    ScheduledPickupElapsed,
 }
 
 public sealed record CreateAllocationRunResult(
@@ -13,13 +17,34 @@ public sealed record CreateAllocationRunResult(
     AllocationRunView? AllocationRun = null);
 
 public sealed class CreateAllocationRun(
-    AllocationRunCreator allocationRunCreator)
+    AllocationRunCreator allocationRunCreator,
+    IRideRequestStore rideRequestStore,
+    TimeProvider timeProvider)
 {
     public async Task<CreateAllocationRunResult> ExecuteAsync(
         Guid rideRequestId,
         DispatchRankingPolicy rankingPolicy,
         CancellationToken cancellationToken)
     {
+        var rideRequest = await rideRequestStore.FindByIdAsync(rideRequestId, cancellationToken);
+        if (rideRequest is null)
+        {
+            return new(CreateAllocationRunOutcome.RideRequestNotFound);
+        }
+
+        if (rideRequest.Timing == RideTiming.Scheduled)
+        {
+            if (rideRequest.DispatchActivatedAt is null)
+            {
+                return new(CreateAllocationRunOutcome.ScheduledDispatchNotActivated);
+            }
+
+            if (timeProvider.GetUtcNow() > rideRequest.RequestedPickupAt)
+            {
+                return new(CreateAllocationRunOutcome.ScheduledPickupElapsed);
+            }
+        }
+
         var allocationRun = await allocationRunCreator.CreateAsync(
             rideRequestId,
             rankingPolicy,

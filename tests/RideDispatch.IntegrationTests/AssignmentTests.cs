@@ -316,7 +316,13 @@ public sealed class AssignmentTests
             estimatedTripDurationSeconds = 1200,
         });
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        if (timing == "SCHEDULED")
+        {
+            using var activation = await client.PostAsync($"/api/v1/ride-requests/{id}/activate-dispatch", null);
+            activation.EnsureSuccessStatusCode();
+        }
+        return id;
     }
 
     private static async Task<Guid> CreateEligibleDriverAsync(HttpClient client, string name)
@@ -400,6 +406,7 @@ public sealed class AssignmentTests
             var application = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("ConnectionStrings:Database", database.GetConnectionString());
+                builder.UseSetting("Dispatch:Scheduled:ActivationLeadTimeSeconds", "7200");
                 builder.ConfigureServices(services =>
                 {
                     services.RemoveAll<TimeProvider>();

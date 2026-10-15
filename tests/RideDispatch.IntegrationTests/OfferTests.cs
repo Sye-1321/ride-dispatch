@@ -25,6 +25,7 @@ public sealed class OfferTests
         await using var application = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("ConnectionStrings:Database", database.GetConnectionString());
+            builder.UseSetting("Dispatch:Scheduled:ActivationLeadTimeSeconds", "3600");
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<TimeProvider>();
@@ -124,7 +125,13 @@ public sealed class OfferTests
             estimatedTripDurationSeconds = 1200,
         });
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        if (requestedPickupAt is not null)
+        {
+            using var activation = await client.PostAsync($"/api/v1/ride-requests/{id}/activate-dispatch", null);
+            activation.EnsureSuccessStatusCode();
+        }
+        return id;
     }
 
     private static async Task<Guid> CreateEligibleDriverAsync(HttpClient client)

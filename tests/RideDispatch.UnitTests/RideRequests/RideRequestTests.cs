@@ -21,6 +21,7 @@ public sealed class RideRequestTests
         Assert.Equal(38.78, rideRequest.DestinationLongitude);
         Assert.Equal(VehicleType.Standard, rideRequest.RequiredVehicleType);
         Assert.Equal(1200, rideRequest.EstimatedTripDurationSeconds);
+        Assert.Null(rideRequest.DispatchActivatedAt);
     }
 
     [Fact]
@@ -57,7 +58,63 @@ public sealed class RideRequestTests
 
         Assert.Equal(TimeSpan.Zero, rideRequest.RequestedPickupAt!.Value.Offset);
         Assert.Equal(requestedPickupAt.ToUniversalTime(), rideRequest.RequestedPickupAt);
+        Assert.Null(rideRequest.DispatchActivatedAt);
     }
+
+    [Theory]
+    [InlineData(15)]
+    [InlineData(10)]
+    [InlineData(0)]
+    public void Scheduled_dispatch_activates_inside_inclusive_window(int minutesBeforePickup)
+    {
+        var pickup = CurrentTime.AddHours(1);
+        var rideRequest = CreateScheduledRideRequest(pickup);
+        var activationTime = pickup.AddMinutes(-minutesBeforePickup);
+
+        rideRequest.ActivateDispatch(activationTime, TimeSpan.FromMinutes(15));
+
+        Assert.Equal(activationTime, rideRequest.DispatchActivatedAt);
+    }
+
+    [Fact]
+    public void Scheduled_dispatch_normalizes_activation_to_utc_and_cannot_activate_twice()
+    {
+        var pickup = CurrentTime.AddHours(1);
+        var rideRequest = CreateScheduledRideRequest(pickup);
+        var activation = new DateTimeOffset(2026, 10, 4, 15, 50, 0, TimeSpan.FromHours(3));
+
+        rideRequest.ActivateDispatch(activation, TimeSpan.FromMinutes(15));
+
+        Assert.Equal(activation.ToUniversalTime(), rideRequest.DispatchActivatedAt);
+        Assert.Throws<InvalidOperationException>(() =>
+            rideRequest.ActivateDispatch(pickup, TimeSpan.FromMinutes(15)));
+        Assert.Equal(activation.ToUniversalTime(), rideRequest.DispatchActivatedAt);
+    }
+
+    [Fact]
+    public void Scheduled_dispatch_rejects_outside_window_and_before_creation()
+    {
+        var pickup = CurrentTime.AddHours(1);
+        Assert.Throws<InvalidOperationException>(() =>
+            CreateScheduledRideRequest(pickup)
+                .ActivateDispatch(pickup.AddMinutes(-16), TimeSpan.FromMinutes(15)));
+        Assert.Throws<InvalidOperationException>(() =>
+            CreateScheduledRideRequest(pickup)
+                .ActivateDispatch(pickup.AddTicks(1), TimeSpan.FromMinutes(15)));
+        Assert.Throws<InvalidOperationException>(() =>
+            CreateScheduledRideRequest(CurrentTime.AddMinutes(10))
+                .ActivateDispatch(CurrentTime.AddTicks(-1), TimeSpan.FromMinutes(15)));
+    }
+
+    [Fact]
+    public void Immediate_dispatch_activation_is_rejected()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            CreateRideRequest().ActivateDispatch(CurrentTime, TimeSpan.FromMinutes(15)));
+    }
+
+    private static RideRequest CreateScheduledRideRequest(DateTimeOffset requestedPickupAt) =>
+        CreateRideRequest(timing: RideTiming.Scheduled, requestedPickupAt: requestedPickupAt);
 
     [Theory]
     [InlineData(double.NaN, 38.74, 9.01, 38.78)]

@@ -17,7 +17,8 @@ public sealed record RideRequestView(
     VehicleType RequiredVehicleType,
     DateTimeOffset? RequestedPickupAt,
     int EstimatedTripDurationSeconds,
-    DateTimeOffset CreatedAt)
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? DispatchActivatedAt)
 {
     public static RideRequestView FromRideRequest(RideRequest rideRequest) =>
         new(
@@ -34,5 +35,6 @@ public sealed record RideRequestView(
             rideRequest.RequiredVehicleType,
             rideRequest.RequestedPickupAt,
             rideRequest.EstimatedTripDurationSeconds,
-            rideRequest.CreatedAt);
+            rideRequest.CreatedAt,
+            rideRequest.DispatchActivatedAt);
 }

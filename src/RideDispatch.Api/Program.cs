@@ -23,6 +23,9 @@ var eligibilityPolicy = new DispatchEligibilityPolicy(
 var offerConfiguration = builder.Configuration.GetSection("Dispatch:Offers");
 var offerPolicy = new OfferPolicy(
     TimeSpan.FromSeconds(offerConfiguration.GetValue<double>("TtlSeconds")));
+var scheduledConfiguration = builder.Configuration.GetSection("Dispatch:Scheduled");
+var scheduledDispatchPolicy = new ScheduledDispatchPolicy(
+    TimeSpan.FromSeconds(scheduledConfiguration.GetValue<double>("ActivationLeadTimeSeconds")));
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -35,6 +38,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(eligibilityPolicy);
 builder.Services.AddSingleton(offerPolicy);
+builder.Services.AddSingleton(scheduledDispatchPolicy);
 builder.Services.AddScoped<CreateDriver>();
 builder.Services.AddScoped<GetDriver>();
 builder.Services.AddScoped<ListDrivers>();
@@ -52,6 +56,7 @@ builder.Services.AddScoped<GetPassenger>();
 builder.Services.AddScoped<CreateRideRequest>();
 builder.Services.AddScoped<GetRideRequest>();
 builder.Services.AddScoped<ListRideRequests>();
+builder.Services.AddScoped<ActivateScheduledDispatch>();
 builder.Services.AddScoped<EvaluateDispatchCandidates>();
 builder.Services.AddScoped<FindEligibleDrivers>();
 builder.Services.AddScoped<CreateAllocationRun>();

@@ -248,6 +248,7 @@ public sealed class CreateReplacementDispatchTests
     private sealed class RideStoreStub(RideRequest? ride) : IRideRequestStore
     {
         public Task<RideRequest?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(ride?.Id == id ? ride : null);
+        public Task<RideRequest?> FindByIdTrackedAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task AddAsync(RideRequest value, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<RideRequest>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task SaveChangesAsync(CancellationToken ct) => throw new NotSupportedException();
