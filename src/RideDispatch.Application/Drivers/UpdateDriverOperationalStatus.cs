@@ -7,6 +7,7 @@ public enum UpdateDriverOperationalStatusOutcome
     Success,
     DriverNotFound,
     DriverNotApproved,
+    Conflict,
 }
 
 public sealed record UpdateDriverOperationalStatusResult(
@@ -15,23 +16,40 @@ public sealed record UpdateDriverOperationalStatusResult(
 
 public sealed class UpdateDriverOperationalStatus(IDriverStore driverStore, TimeProvider timeProvider)
 {
+    private const int MaxAttempts = 2;
+
     public async Task<UpdateDriverOperationalStatusResult> ExecuteAsync(
         Guid id,
         DriverOperationalStatus status,
         CancellationToken cancellationToken)
     {
-        var driver = await driverStore.FindAsync(id, cancellationToken);
-        if (driver is null)
+        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
         {
-            return new(UpdateDriverOperationalStatusOutcome.DriverNotFound);
+            var driver = await driverStore.FindAsync(id, cancellationToken);
+            if (driver is null)
+            {
+                return new(UpdateDriverOperationalStatusOutcome.DriverNotFound);
+            }
+
+            if (!driver.TrySetOperationalStatus(status, timeProvider.GetUtcNow()))
+            {
+                return new(UpdateDriverOperationalStatusOutcome.DriverNotApproved);
+            }
+
+            try
+            {
+                await driverStore.SaveChangesAsync(cancellationToken);
+                return new(UpdateDriverOperationalStatusOutcome.Success, DriverView.FromDriver(driver));
+            }
+            catch (DriverStateConcurrencyException) when (attempt < MaxAttempts)
+            {
+            }
+            catch (DriverStateConcurrencyException)
+            {
+                return new(UpdateDriverOperationalStatusOutcome.Conflict);
+            }
         }
 
-        if (!driver.TrySetOperationalStatus(status, timeProvider.GetUtcNow()))
-        {
-            return new(UpdateDriverOperationalStatusOutcome.DriverNotApproved);
-        }
-
-        await driverStore.SaveChangesAsync(cancellationToken);
-        return new(UpdateDriverOperationalStatusOutcome.Success, DriverView.FromDriver(driver));
+        return new(UpdateDriverOperationalStatusOutcome.Conflict);
     }
 }

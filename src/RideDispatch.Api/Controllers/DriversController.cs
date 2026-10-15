@@ -45,8 +45,14 @@ public sealed class DriversController : ControllerBase
         [FromServices] UpdateDriverApproval useCase,
         CancellationToken cancellationToken)
     {
-        var driver = await useCase.ExecuteAsync(id, request.Status, cancellationToken);
-        return driver is null ? NotFound() : Ok(DriverResponse.FromView(driver));
+        var result = await useCase.ExecuteAsync(id, request.Status, cancellationToken);
+        return result.Outcome switch
+        {
+            UpdateDriverApprovalOutcome.Success => Ok(DriverResponse.FromView(result.Driver!)),
+            UpdateDriverApprovalOutcome.DriverNotFound => NotFound(),
+            UpdateDriverApprovalOutcome.Conflict => Conflict(),
+            _ => throw new InvalidOperationException("Unknown driver approval update outcome."),
+        };
     }
 
     [HttpPut("{id:guid}/operational-status")]
@@ -69,6 +75,7 @@ public sealed class DriversController : ControllerBase
                 Detail = "Only approved drivers can be marked as available.",
                 Extensions = { ["code"] = "DRIVER_NOT_APPROVED" },
             }),
+            UpdateDriverOperationalStatusOutcome.Conflict => Conflict(),
             _ => throw new InvalidOperationException("Unknown operational status update outcome."),
         };
     }

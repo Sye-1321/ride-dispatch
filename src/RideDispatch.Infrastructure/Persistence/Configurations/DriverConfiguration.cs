@@ -25,13 +25,15 @@ public sealed class DriverConfiguration : IEntityTypeConfiguration<Driver>
             .HasColumnName("approval_status")
             .HasConversion<string>()
             .HasMaxLength(20)
-            .IsRequired();
+            .IsRequired()
+            .IsConcurrencyToken();
 
         builder.Property(driver => driver.OperationalStatus)
             .HasColumnName("operational_status")
             .HasConversion<string>()
             .HasMaxLength(20)
-            .IsRequired();
+            .IsRequired()
+            .IsConcurrencyToken();
 
         builder.Property(driver => driver.AvailableSince)
             .HasColumnName("available_since")

@@ -265,6 +265,7 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                         .HasColumnName("id");
 
                     b.Property<string>("ApprovalStatus")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
@@ -281,6 +282,7 @@ namespace RideDispatch.Infrastructure.Persistence.Migrations
                         .HasColumnName("name");
 
                     b.Property<string>("OperationalStatus")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")

@@ -12,3 +12,7 @@ public interface IDriverStore
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
+
+public sealed class DriverStateConcurrencyException(Exception innerException)
+    : Exception("The driver state was changed concurrently.", innerException);
+

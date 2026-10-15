@@ -19,6 +19,17 @@ public sealed class DriverStore(DispatchDbContext dbContext) : IDriverStore
             .ThenBy(driver => driver.Id)
             .ToListAsync(cancellationToken);
 
-    public async Task SaveChangesAsync(CancellationToken cancellationToken) =>
-        await dbContext.SaveChangesAsync(cancellationToken);
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException exception) when (
+            exception.Entries.Count > 0 && exception.Entries.All(entry => entry.Entity is Driver))
+        {
+            dbContext.ChangeTracker.Clear();
+            throw new DriverStateConcurrencyException(exception);
+        }
+    }
 }
