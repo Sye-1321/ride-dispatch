@@ -14,10 +14,14 @@ public sealed class OfferStore(DispatchDbContext dbContext) : IOfferStore
         dbContext.Offers.SingleOrDefaultAsync(offer => offer.Id == id, cancellationToken);
 
     public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken cancellationToken) =>
-        dbContext.Offers.AsNoTracking().SingleOrDefaultAsync(offer => offer.Id == id, cancellationToken);
+        dbContext.Offers
+            .AsNoTracking()
+            .SingleOrDefaultAsync(offer => offer.Id == id, cancellationToken);
 
     public Task<Offer?> FindByAllocationRunIdAsync(Guid allocationRunId, CancellationToken cancellationToken) =>
-        dbContext.Offers.AsNoTracking().SingleOrDefaultAsync(offer => offer.AllocationRunId == allocationRunId, cancellationToken);
+        dbContext.Offers
+            .AsNoTracking()
+            .SingleOrDefaultAsync(offer => offer.AllocationRunId == allocationRunId, cancellationToken);
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
@@ -26,7 +30,11 @@ public sealed class OfferStore(DispatchDbContext dbContext) : IOfferStore
             await dbContext.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException exception) when (
-            exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "ux_offers_allocation_run_id" })
+            exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+                ConstraintName: "ux_offers_allocation_run_id",
+            })
         {
             dbContext.ChangeTracker.Clear();
             throw new OfferAlreadyExistsException(exception);

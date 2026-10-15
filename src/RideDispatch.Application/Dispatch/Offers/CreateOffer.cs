@@ -3,7 +3,13 @@ using RideDispatch.Domain.Dispatch;
 
 namespace RideDispatch.Application.Dispatch.Offers;
 
-public enum CreateOfferOutcome { Success, AllocationRunNotFound, NoRecommendedDriver, OfferAlreadyExists }
+public enum CreateOfferOutcome
+{
+    Success,
+    AllocationRunNotFound,
+    NoRecommendedDriver,
+    OfferAlreadyExists,
+}
 
 public sealed record CreateOfferResult(CreateOfferOutcome Outcome, OfferView? Offer = null);
 
@@ -31,7 +37,11 @@ public sealed class CreateOffer(
             return new(CreateOfferOutcome.OfferAlreadyExists);
         }
 
-        var offer = Offer.Create(allocationRunId, allocationRun.RecommendedDriverId.Value, policy.Ttl, timeProvider.GetUtcNow());
+        var offer = Offer.Create(
+            allocationRunId,
+            allocationRun.RecommendedDriverId.Value,
+            policy.Ttl,
+            timeProvider.GetUtcNow());
         await offerStore.AddAsync(offer, cancellationToken);
         try
         {

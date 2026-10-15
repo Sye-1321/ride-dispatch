@@ -9,12 +9,18 @@ namespace RideDispatch.Api.Controllers;
 public sealed class OffersController : ControllerBase
 {
     [HttpPost("allocation-runs/{allocationRunId:guid}/offers")]
-    public async Task<ActionResult<OfferResponse>> Create(Guid allocationRunId, [FromServices] CreateOffer useCase, CancellationToken cancellationToken)
+    public async Task<ActionResult<OfferResponse>> Create(
+        Guid allocationRunId,
+        [FromServices] CreateOffer useCase,
+        CancellationToken cancellationToken)
     {
         var result = await useCase.ExecuteAsync(allocationRunId, cancellationToken);
         return result.Outcome switch
         {
-            CreateOfferOutcome.Success => CreatedAtAction(nameof(GetById), new { offerId = result.Offer!.Id }, OfferResponse.FromView(result.Offer)),
+            CreateOfferOutcome.Success => CreatedAtAction(
+                nameof(GetById),
+                new { offerId = result.Offer!.Id },
+                OfferResponse.FromView(result.Offer)),
             CreateOfferOutcome.AllocationRunNotFound => NotFound(),
             CreateOfferOutcome.NoRecommendedDriver or CreateOfferOutcome.OfferAlreadyExists => Conflict(),
             _ => throw new InvalidOperationException("Unknown offer creation outcome."),
@@ -39,13 +45,15 @@ public sealed class OffersController : ControllerBase
         return result.Outcome switch
         {
             CreateDispatcherOverrideOfferOutcome.Success => CreatedAtAction(
-                nameof(GetById), new { offerId = result.Offer!.Id }, OfferResponse.FromView(result.Offer)),
+                nameof(GetById),
+                new { offerId = result.Offer!.Id },
+                OfferResponse.FromView(result.Offer)),
             CreateDispatcherOverrideOfferOutcome.AllocationRunNotFound => NotFound(),
             CreateDispatcherOverrideOfferOutcome.InvalidReason => BadRequest(
                 new ValidationProblemDetails(
                     new Dictionary<string, string[]>
                     {
-                        [nameof(request.Reason)] = ["Reason must contain 1 to 500 non-whitespace characters."],
+                        [nameof(request.Reason)] = ["Reason must contain 1 to 500 characters after trimming."],
                     })),
             CreateDispatcherOverrideOfferOutcome.DriverNotEvaluated or
                 CreateDispatcherOverrideOfferOutcome.DriverNotEligible or
@@ -56,7 +64,10 @@ public sealed class OffersController : ControllerBase
     }
 
     [HttpGet("offers/{offerId:guid}")]
-    public async Task<ActionResult<OfferResponse>> GetById(Guid offerId, [FromServices] GetOffer useCase, CancellationToken cancellationToken)
+    public async Task<ActionResult<OfferResponse>> GetById(
+        Guid offerId,
+        [FromServices] GetOffer useCase,
+        CancellationToken cancellationToken)
     {
         var offer = await useCase.ExecuteAsync(offerId, cancellationToken);
         return offer is null ? NotFound() : Ok(OfferResponse.FromView(offer));
@@ -95,7 +106,8 @@ public sealed class OffersController : ControllerBase
     {
         TransitionOfferOutcome.Success => Ok(OfferResponse.FromView(result.Offer!)),
         TransitionOfferOutcome.OfferNotFound => NotFound(),
-        TransitionOfferOutcome.OfferExpired or TransitionOfferOutcome.InvalidState => Conflict(result.Offer is null ? null : OfferResponse.FromView(result.Offer)),
+        TransitionOfferOutcome.OfferExpired or TransitionOfferOutcome.InvalidState => Conflict(
+            result.Offer is null ? null : OfferResponse.FromView(result.Offer)),
         _ => throw new InvalidOperationException("Unknown offer transition outcome."),
     };
 }
@@ -114,9 +126,16 @@ public sealed record ReplacementDispatchResponse(
 
 public sealed record CreateDispatcherOverrideOfferRequest(Guid DriverId, string? Reason);
 
-public sealed record OfferResponse(Guid Id, Guid AllocationRunId, Guid DriverId, OfferStatus Status,
-    OfferSelectionMode SelectionMode, string? OverrideReason,
-    DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, DateTimeOffset? ResolvedAt)
+public sealed record OfferResponse(
+    Guid Id,
+    Guid AllocationRunId,
+    Guid DriverId,
+    OfferStatus Status,
+    OfferSelectionMode SelectionMode,
+    string? OverrideReason,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset? ResolvedAt)
 {
     public static OfferResponse FromView(OfferView offer) => new(offer.Id, offer.AllocationRunId,
         offer.DriverId, offer.Status, offer.SelectionMode, offer.OverrideReason,
