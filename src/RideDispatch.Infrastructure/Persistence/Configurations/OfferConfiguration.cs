@@ -22,7 +22,7 @@ public sealed class OfferConfiguration : IEntityTypeConfiguration<Offer>
         builder.Property(offer => offer.Id).HasColumnName("id").ValueGeneratedNever();
         builder.Property(offer => offer.AllocationRunId).HasColumnName("allocation_run_id").IsRequired();
         builder.Property(offer => offer.DriverId).HasColumnName("driver_id").IsRequired();
-        builder.Property(offer => offer.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Property(offer => offer.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(20).IsRequired().IsConcurrencyToken();
         builder.Property(offer => offer.SelectionMode).HasColumnName("selection_mode").HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(offer => offer.OverrideReason).HasColumnName("override_reason").HasMaxLength(500);
         builder.Property(offer => offer.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp with time zone").IsRequired();

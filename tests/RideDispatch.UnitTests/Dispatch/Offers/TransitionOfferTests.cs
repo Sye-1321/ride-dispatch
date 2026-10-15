@@ -70,6 +70,53 @@ public sealed class TransitionOfferTests
         Assert.Equal(0, clock.ReadCount);
     }
 
+    [Theory]
+    [InlineData("accept", OfferStatus.Accepted)]
+    [InlineData("accept", OfferStatus.Declined)]
+    [InlineData("accept", OfferStatus.Withdrawn)]
+    [InlineData("accept", OfferStatus.Expired)]
+    [InlineData("decline", OfferStatus.Accepted)]
+    [InlineData("withdraw", OfferStatus.Accepted)]
+    public async Task Concurrency_loss_reloads_winner_and_returns_authoritative_state(string action, OfferStatus winnerStatus)
+    {
+        var offer = CreateOffer();
+        var winner = CreateOffer();
+        if (winnerStatus == OfferStatus.Accepted) winner.Accept(CreatedAt.AddSeconds(1));
+        else if (winnerStatus == OfferStatus.Declined) winner.Decline(CreatedAt.AddSeconds(1));
+        else if (winnerStatus == OfferStatus.Withdrawn) winner.Withdraw(CreatedAt.AddSeconds(1));
+        else if (winnerStatus == OfferStatus.Expired) winner.Expire(offer.ExpiresAt);
+
+        var store = new StubOfferStore(offer) { ConcurrencyWinner = winner };
+        var clock = new CountingTimeProvider(offer.ExpiresAt.AddTicks(-1));
+        var result = await Execute(action, store, clock, offer.Id);
+
+        var expectedOutcome = winnerStatus == OfferStatus.Expired
+            ? TransitionOfferOutcome.OfferExpired
+            : TransitionOfferOutcome.InvalidState;
+        Assert.Equal(expectedOutcome, result.Outcome);
+        Assert.Equal(winnerStatus, result.Offer!.Status);
+        Assert.Equal(1, store.SaveCount);
+    }
+
+    [Theory]
+    [InlineData("accept")]
+    [InlineData("decline")]
+    [InlineData("withdraw")]
+    public async Task Concurrency_loss_at_exact_expiry_reloads_winner(string action)
+    {
+        var offer = CreateOffer();
+        var winner = CreateOffer();
+        winner.Accept(CreatedAt.AddSeconds(1));
+
+        var store = new StubOfferStore(offer) { ConcurrencyWinner = winner };
+        var clock = new CountingTimeProvider(offer.ExpiresAt);
+        var result = await Execute(action, store, clock, offer.Id);
+
+        Assert.Equal(TransitionOfferOutcome.InvalidState, result.Outcome);
+        Assert.Equal(OfferStatus.Accepted, result.Offer!.Status);
+        Assert.Equal(1, store.SaveCount);
+    }
+
     private static Offer CreateOffer() => Offer.Create(Guid.NewGuid(), Guid.NewGuid(), TimeSpan.FromSeconds(20), CreatedAt);
 
     private static Task<TransitionOfferResult> Execute(string action, StubOfferStore store, CountingTimeProvider clock, Guid id) => action switch
@@ -82,11 +129,20 @@ public sealed class TransitionOfferTests
 
     private sealed class StubOfferStore(Offer? offer) : IOfferStore
     {
+        public Offer? ConcurrencyWinner { get; set; }
         public int SaveCount { get; private set; }
         public Task<Offer?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(offer?.Id == id ? offer : null);
-        public Task SaveChangesAsync(CancellationToken ct) { SaveCount++; return Task.CompletedTask; }
+        public Task SaveChangesAsync(CancellationToken ct)
+        {
+            SaveCount++;
+            if (ConcurrencyWinner is not null)
+            {
+                throw new OfferStateConcurrencyException(new Exception());
+            }
+            return Task.CompletedTask;
+        }
         public Task AddAsync(Offer value, CancellationToken ct) => throw new NotSupportedException();
-        public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => Task.FromResult(ConcurrencyWinner);
         public Task<Offer?> FindByAllocationRunIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
     }
 

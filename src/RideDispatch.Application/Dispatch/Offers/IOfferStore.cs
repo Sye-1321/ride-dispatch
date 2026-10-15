@@ -18,3 +18,7 @@ public sealed class OfferAlreadyExistsException : Exception
     {
     }
 }
+
+public sealed class OfferStateConcurrencyException(Exception innerException)
+    : Exception("The offer state was changed concurrently.", innerException);
+

@@ -137,6 +137,44 @@ public sealed class CreateReplacementDispatchTests
         Assert.Equal(1, fixture.Runs.AddCount);
     }
 
+    [Theory]
+    [InlineData(OfferStatus.Accepted)]
+    [InlineData(OfferStatus.Withdrawn)]
+    public async Task Pending_source_expiry_concurrency_loss_to_non_failure_returns_source_not_failed(OfferStatus winningStatus)
+    {
+        var fixture = Fixture.WithSource(OfferStatus.Pending, Now.AddSeconds(-30));
+        var winner = Offer.Create(
+            fixture.SourceRun!.Id, fixture.SourceOffer!.DriverId, TimeSpan.FromSeconds(30), fixture.SourceOffer.CreatedAt);
+        if (winningStatus == OfferStatus.Accepted) winner.Accept(fixture.SourceOffer.CreatedAt.AddSeconds(1));
+        else winner.Withdraw(fixture.SourceOffer.CreatedAt.AddSeconds(1));
+
+        fixture.Offers.WinnerOnSaveRace = winner;
+
+        var result = await fixture.UseCase.ExecuteAsync(fixture.SourceOffer.Id, CancellationToken.None);
+        Assert.Equal(CreateReplacementDispatchOutcome.SourceOfferNotFailed, result.Outcome);
+        Assert.Equal(1, fixture.Offers.SaveCount);
+        Assert.Equal(0, fixture.Runs.AddCount);
+    }
+
+    [Theory]
+    [InlineData(OfferStatus.Expired)]
+    [InlineData(OfferStatus.Declined)]
+    public async Task Pending_source_expiry_concurrency_loss_to_failed_state_continues_replacement(OfferStatus winningStatus)
+    {
+        var fixture = Fixture.WithSource(OfferStatus.Pending, Now.AddSeconds(-30));
+        var winner = Offer.Create(
+            fixture.SourceRun!.Id, fixture.SourceOffer!.DriverId, TimeSpan.FromSeconds(30), fixture.SourceOffer.CreatedAt);
+        if (winningStatus == OfferStatus.Expired) winner.Expire(fixture.SourceOffer.ExpiresAt);
+        else winner.Decline(fixture.SourceOffer.CreatedAt.AddSeconds(1));
+
+        fixture.Offers.WinnerOnSaveRace = winner;
+
+        var result = await fixture.UseCase.ExecuteAsync(fixture.SourceOffer.Id, CancellationToken.None);
+        Assert.Equal(CreateReplacementDispatchOutcome.Success, result.Outcome);
+        Assert.Equal(1, fixture.Offers.SaveCount);
+        Assert.Equal(1, fixture.Runs.AddCount);
+    }
+
     private sealed class Fixture
     {
         private Fixture(
@@ -236,13 +274,22 @@ public sealed class CreateReplacementDispatchTests
     private sealed class OfferStoreStub(Offer? source) : IOfferStore
     {
         public Offer? ExistingByRun { get; set; }
+        public Offer? WinnerOnSaveRace { get; set; }
         public int AddCount { get; private set; }
         public int SaveCount { get; private set; }
         public Task AddAsync(Offer offer, CancellationToken ct) { ExistingByRun = offer; AddCount++; return Task.CompletedTask; }
         public Task<Offer?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(source?.Id == id ? source : null);
-        public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => FindByIdAsync(id, ct);
+        public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => Task.FromResult(WinnerOnSaveRace ?? (source?.Id == id ? source : null));
         public Task<Offer?> FindByAllocationRunIdAsync(Guid id, CancellationToken ct) => Task.FromResult(ExistingByRun?.AllocationRunId == id ? ExistingByRun : null);
-        public Task SaveChangesAsync(CancellationToken ct) { SaveCount++; return Task.CompletedTask; }
+        public Task SaveChangesAsync(CancellationToken ct)
+        {
+            SaveCount++;
+            if (WinnerOnSaveRace is not null)
+            {
+                throw new OfferStateConcurrencyException(new Exception());
+            }
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class RideStoreStub(RideRequest? ride) : IRideRequestStore

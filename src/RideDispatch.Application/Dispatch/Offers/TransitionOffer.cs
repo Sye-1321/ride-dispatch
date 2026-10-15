@@ -27,13 +27,46 @@ public abstract class TransitionOffer(IOfferStore offerStore, TimeProvider timeP
         if (currentTime >= offer.ExpiresAt)
         {
             offer.Expire(currentTime);
-            await offerStore.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await offerStore.SaveChangesAsync(cancellationToken);
+            }
+            catch (OfferStateConcurrencyException)
+            {
+                return await HandleConcurrencyConflictAsync(offerId, cancellationToken);
+            }
+
             return new(TransitionOfferOutcome.OfferExpired, OfferView.FromOffer(offer));
         }
 
         transition(offer, currentTime);
-        await offerStore.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await offerStore.SaveChangesAsync(cancellationToken);
+        }
+        catch (OfferStateConcurrencyException)
+        {
+            return await HandleConcurrencyConflictAsync(offerId, cancellationToken);
+        }
+
         return new(TransitionOfferOutcome.Success, OfferView.FromOffer(offer));
+    }
+
+    private async Task<TransitionOfferResult> HandleConcurrencyConflictAsync(
+        Guid offerId,
+        CancellationToken cancellationToken)
+    {
+        var current = await offerStore.FindByIdReadOnlyAsync(offerId, cancellationToken);
+        if (current is null)
+        {
+            return new(TransitionOfferOutcome.OfferNotFound);
+        }
+
+        return new(
+            current.Status == OfferStatus.Expired
+                ? TransitionOfferOutcome.OfferExpired
+                : TransitionOfferOutcome.InvalidState,
+            OfferView.FromOffer(current));
     }
 }
 

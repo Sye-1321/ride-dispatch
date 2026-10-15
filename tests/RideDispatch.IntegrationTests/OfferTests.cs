@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using RideDispatch.Application.Dispatch.Offers;
+using RideDispatch.Domain.Dispatch;
 using RideDispatch.Infrastructure.Persistence;
 using Testcontainers.PostgreSql;
 
@@ -108,6 +110,100 @@ public sealed class OfferTests
         Assert.Equal(clock.GetUtcNow(), expired.RootElement.GetProperty("resolvedAt").GetDateTimeOffset());
     }
 
+    [Fact]
+    public async Task Status_concurrency_token_prevents_terminal_last_write_wins()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var client = environment.Client;
+        var rideId = await CreateRideAsync(client);
+        var driverId = await CreateEligibleDriverAsync(client);
+        var runId = await CreateRunAsync(client, rideId);
+        using var createResponse = await client.PostAsync($"/api/v1/allocation-runs/{runId}/offers", null);
+        createResponse.EnsureSuccessStatusCode();
+        var offerId = (await createResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        await using var firstScope = environment.Application.Services.CreateAsyncScope();
+        await using var secondScope = environment.Application.Services.CreateAsyncScope();
+        var firstStore = firstScope.ServiceProvider.GetRequiredService<IOfferStore>();
+        var secondStore = secondScope.ServiceProvider.GetRequiredService<IOfferStore>();
+        var first = (await firstStore.FindByIdAsync(offerId, default))!;
+        var second = (await secondStore.FindByIdAsync(offerId, default))!;
+
+        first.Accept(InitialTime.AddSeconds(1));
+        second.Decline(InitialTime.AddSeconds(2));
+
+        await firstStore.SaveChangesAsync(default);
+        await Assert.ThrowsAsync<OfferStateConcurrencyException>(() => secondStore.SaveChangesAsync(default));
+
+        await using var verificationScope = environment.Application.Services.CreateAsyncScope();
+        var persisted = await verificationScope.ServiceProvider.GetRequiredService<IOfferStore>()
+            .FindByIdReadOnlyAsync(offerId, default);
+        Assert.Equal(OfferStatus.Accepted, persisted!.Status);
+        Assert.Equal(InitialTime.AddSeconds(1), persisted.ResolvedAt);
+    }
+
+    [Theory]
+    [InlineData("accept", "decline")]
+    [InlineData("accept", "accept")]
+    [InlineData("withdraw", "accept")]
+    public async Task Competing_transitions_cannot_all_report_success(string actionA, string actionB)
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var client = environment.Client;
+        var rideId = await CreateRideAsync(client);
+        var driverId = await CreateEligibleDriverAsync(client);
+        var runId = await CreateRunAsync(client, rideId);
+        using var createResponse = await client.PostAsync($"/api/v1/allocation-runs/{runId}/offers", null);
+        createResponse.EnsureSuccessStatusCode();
+        var offerId = (await createResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        var requestA = client.PostAsync($"/api/v1/offers/{offerId}/{actionA}", null);
+        var requestB = client.PostAsync($"/api/v1/offers/{offerId}/{actionB}", null);
+        var responses = await Task.WhenAll(requestA, requestB);
+
+        var statuses = responses.Select(r => r.StatusCode).ToList();
+        Assert.Contains(HttpStatusCode.OK, statuses);
+        Assert.Contains(HttpStatusCode.Conflict, statuses);
+
+        var okResponse = responses.Single(r => r.StatusCode == HttpStatusCode.OK);
+        var conflictResponse = responses.Single(r => r.StatusCode == HttpStatusCode.Conflict);
+
+        var okBody = await okResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var conflictBody = await conflictResponse.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(okBody.GetProperty("status").GetString(), conflictBody.GetProperty("status").GetString());
+        Assert.Equal(okBody.GetProperty("resolvedAt").GetDateTimeOffset(), conflictBody.GetProperty("resolvedAt").GetDateTimeOffset());
+
+        using var getResponse = await client.GetAsync($"/api/v1/offers/{offerId}");
+        var persisted = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(okBody.GetProperty("status").GetString(), persisted.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task Competing_transition_when_expired_returns_expired_conflict()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var client = environment.Client;
+        var rideId = await CreateRideAsync(client);
+        var driverId = await CreateEligibleDriverAsync(client);
+        var runId = await CreateRunAsync(client, rideId);
+        using var createResponse = await client.PostAsync($"/api/v1/allocation-runs/{runId}/offers", null);
+        createResponse.EnsureSuccessStatusCode();
+        var offerId = (await createResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        environment.Clock.Advance(TimeSpan.FromSeconds(20));
+
+        var acceptTask = client.PostAsync($"/api/v1/offers/{offerId}/accept", null);
+        var declineTask = client.PostAsync($"/api/v1/offers/{offerId}/decline", null);
+        var responses = await Task.WhenAll(acceptTask, declineTask);
+
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.Conflict, r.StatusCode));
+
+        using var getResponse = await client.GetAsync($"/api/v1/offers/{offerId}");
+        var persisted = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("EXPIRED", persisted.GetProperty("status").GetString());
+    }
+
     private static async Task<Guid> CreateRideAsync(HttpClient client, DateTimeOffset? requestedPickupAt = null)
     {
         using var response = await client.PostAsJsonAsync("/api/v1/ride-requests", new
@@ -164,5 +260,43 @@ public sealed class OfferTests
     {
         public override DateTimeOffset GetUtcNow() => currentTime;
         public void Set(DateTimeOffset value) => currentTime = value;
+        public void Advance(TimeSpan value) => currentTime += value;
+    }
+
+    private sealed class TestEnvironment : IAsyncDisposable
+    {
+        private TestEnvironment(PostgreSqlContainer database, WebApplicationFactory<Program> application,
+            HttpClient client, MutableTimeProvider clock)
+        { Database = database; Application = application; Client = client; Clock = clock; }
+        private PostgreSqlContainer Database { get; }
+        public WebApplicationFactory<Program> Application { get; }
+        public HttpClient Client { get; }
+        public MutableTimeProvider Clock { get; }
+        public static async Task<TestEnvironment> CreateAsync()
+        {
+            var database = new PostgreSqlBuilder("postgis/postgis:18-3.6")
+                .WithDatabase("ride_dispatch").WithUsername("ride_dispatch").WithPassword("ride_dispatch").Build();
+            await database.StartAsync();
+            var clock = new MutableTimeProvider(InitialTime);
+            var application = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting("ConnectionStrings:Database", database.GetConnectionString());
+                builder.UseSetting("Dispatch:Scheduled:ActivationLeadTimeSeconds", "3600");
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<TimeProvider>();
+                    services.AddSingleton<TimeProvider>(clock);
+                });
+            });
+            await using (var scope = application.Services.CreateAsyncScope())
+                await scope.ServiceProvider.GetRequiredService<DispatchDbContext>().Database.MigrateAsync();
+            return new(database, application, application.CreateClient(), clock);
+        }
+        public async ValueTask DisposeAsync()
+        {
+            Client.Dispose();
+            await Application.DisposeAsync();
+            await Database.DisposeAsync();
+        }
     }
 }

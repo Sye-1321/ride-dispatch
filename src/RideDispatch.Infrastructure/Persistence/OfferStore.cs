@@ -39,5 +39,11 @@ public sealed class OfferStore(DispatchDbContext dbContext) : IOfferStore
             dbContext.ChangeTracker.Clear();
             throw new OfferAlreadyExistsException(exception);
         }
+        catch (DbUpdateConcurrencyException exception) when (
+            exception.Entries.Count > 0 && exception.Entries.All(entry => entry.Entity is Offer))
+        {
+            dbContext.ChangeTracker.Clear();
+            throw new OfferStateConcurrencyException(exception);
+        }
     }
 }

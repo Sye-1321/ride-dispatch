@@ -42,7 +42,24 @@ public sealed class CreateReplacementDispatch(
             }
 
             sourceOffer.Expire(now);
-            await offerStore.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await offerStore.SaveChangesAsync(cancellationToken);
+            }
+            catch (OfferStateConcurrencyException)
+            {
+                var reloaded = await offerStore.FindByIdReadOnlyAsync(sourceOfferId, cancellationToken);
+                if (reloaded is null)
+                {
+                    return new(CreateReplacementDispatchOutcome.OfferNotFound, sourceOfferId);
+                }
+
+                sourceOffer = reloaded;
+                if (sourceOffer.Status is not (OfferStatus.Declined or OfferStatus.Expired))
+                {
+                    return new(CreateReplacementDispatchOutcome.SourceOfferNotFailed, sourceOfferId);
+                }
+            }
         }
         else if (sourceOffer.Status is not (OfferStatus.Declined or OfferStatus.Expired))
         {

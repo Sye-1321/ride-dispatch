@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using RideDispatch.Application.Dispatch.Offers;
+using RideDispatch.Domain.Dispatch;
 using RideDispatch.Infrastructure.Persistence;
 using Testcontainers.PostgreSql;
 
@@ -151,6 +153,116 @@ public sealed class ReplacementDispatchTests
         await using var scope = environment.Application.Services.CreateAsyncScope();
         Assert.Equal(1, await scope.ServiceProvider.GetRequiredService<DispatchDbContext>().AllocationRuns
             .CountAsync(candidate => candidate.SourceOfferId == offer.Id));
+    }
+
+    [Fact]
+    public async Task Concurrent_replacement_dispatch_on_pending_offer_expires_once_and_resolves_to_one_run()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var rideId = await CreateRideAsync(environment.Client);
+        await CreateDriverAsync(environment.Client, "Pending Timeout A", 9.031);
+        var driverB = await CreateDriverAsync(environment.Client, "Pending Timeout B", 9.04);
+        var runId = await CreateRunAsync(environment.Client, rideId);
+        var sourceOffer = await CreateOfferAsync(environment.Client, runId);
+
+        environment.Clock.Set(sourceOffer.ExpiresAt);
+
+        var responses = await Task.WhenAll(
+            environment.Client.PostAsync($"/api/v1/offers/{sourceOffer.Id}/replacement-dispatch", null),
+            environment.Client.PostAsync($"/api/v1/offers/{sourceOffer.Id}/replacement-dispatch", null));
+        try
+        {
+            Assert.All(responses, response => Assert.Equal(HttpStatusCode.OK, response.StatusCode));
+            var bodies = await Task.WhenAll(responses.Select(response => response.Content.ReadFromJsonAsync<JsonElement>()));
+            Assert.Equal(bodies[0].GetProperty("allocationRun").GetProperty("id").GetGuid(),
+                bodies[1].GetProperty("allocationRun").GetProperty("id").GetGuid());
+            Assert.Equal(bodies[0].GetProperty("offer").GetProperty("id").GetGuid(),
+                bodies[1].GetProperty("offer").GetProperty("id").GetGuid());
+            Assert.Equal(driverB, bodies[0].GetProperty("offer").GetProperty("driverId").GetGuid());
+        }
+        finally
+        {
+            foreach (var response in responses) response.Dispose();
+        }
+
+        await using var scope = environment.Application.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<DispatchDbContext>();
+        Assert.Equal(1, await db.AllocationRuns.CountAsync(candidate => candidate.SourceOfferId == sourceOffer.Id));
+
+        var persisted = await db.Offers.SingleAsync(o => o.Id == sourceOffer.Id);
+        Assert.Equal(OfferStatus.Expired, persisted.Status);
+    }
+
+    [Fact]
+    public async Task Concurrent_accept_wins_race_against_replacement_dispatch_on_pending_offer()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var rideId = await CreateRideAsync(environment.Client);
+        await CreateDriverAsync(environment.Client, "Accept Win Driver A", 9.031);
+        await CreateDriverAsync(environment.Client, "Accept Win Driver B", 9.04);
+        var firstRun = await CreateRunAsync(environment.Client, rideId);
+        var sourceOffer = await CreateOfferAsync(environment.Client, firstRun);
+
+        await using var acceptScope = environment.Application.Services.CreateAsyncScope();
+        await using var replaceScope = environment.Application.Services.CreateAsyncScope();
+
+        var acceptStore = acceptScope.ServiceProvider.GetRequiredService<IOfferStore>();
+        var replaceStore = replaceScope.ServiceProvider.GetRequiredService<IOfferStore>();
+
+        var offerToAccept = (await acceptStore.FindByIdAsync(sourceOffer.Id, default))!;
+        var offerToReplace = (await replaceStore.FindByIdAsync(sourceOffer.Id, default))!;
+
+        offerToAccept.Accept(offerToAccept.CreatedAt.AddSeconds(1));
+        await acceptStore.SaveChangesAsync(default);
+
+        environment.Clock.Set(sourceOffer.ExpiresAt);
+        var replacementUseCase = replaceScope.ServiceProvider.GetRequiredService<CreateReplacementDispatch>();
+        var result = await replacementUseCase.ExecuteAsync(sourceOffer.Id, default);
+
+        Assert.Equal(CreateReplacementDispatchOutcome.SourceOfferNotFailed, result.Outcome);
+
+        await using var verifyScope = environment.Application.Services.CreateAsyncScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<DispatchDbContext>();
+        Assert.False(await db.AllocationRuns.AnyAsync(r => r.SourceOfferId == sourceOffer.Id));
+
+        var persisted = await db.Offers.SingleAsync(o => o.Id == sourceOffer.Id);
+        Assert.Equal(OfferStatus.Accepted, persisted.Status);
+    }
+
+    [Fact]
+    public async Task Replacement_dispatch_concurrency_race_on_expiry_reloads_winner_and_reuses_run()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var rideId = await CreateRideAsync(environment.Client);
+        await CreateDriverAsync(environment.Client, "Expiry Race A", 9.031);
+        var driverB = await CreateDriverAsync(environment.Client, "Expiry Race B", 9.04);
+        var firstRun = await CreateRunAsync(environment.Client, rideId);
+        var sourceOffer = await CreateOfferAsync(environment.Client, firstRun);
+
+        environment.Clock.Set(sourceOffer.ExpiresAt);
+
+        await using var scopeA = environment.Application.Services.CreateAsyncScope();
+        await using var scopeB = environment.Application.Services.CreateAsyncScope();
+
+        var storeA = scopeA.ServiceProvider.GetRequiredService<IOfferStore>();
+        var storeB = scopeB.ServiceProvider.GetRequiredService<IOfferStore>();
+        var offerA = (await storeA.FindByIdAsync(sourceOffer.Id, default))!;
+        var offerB = (await storeB.FindByIdAsync(sourceOffer.Id, default))!;
+
+        var useCaseA = scopeA.ServiceProvider.GetRequiredService<CreateReplacementDispatch>();
+        var resultA = await useCaseA.ExecuteAsync(sourceOffer.Id, default);
+        Assert.Equal(CreateReplacementDispatchOutcome.Success, resultA.Outcome);
+
+        var useCaseB = scopeB.ServiceProvider.GetRequiredService<CreateReplacementDispatch>();
+        var resultB = await useCaseB.ExecuteAsync(sourceOffer.Id, default);
+        Assert.Equal(CreateReplacementDispatchOutcome.Success, resultB.Outcome);
+
+        Assert.Equal(resultA.AllocationRun!.Id, resultB.AllocationRun!.Id);
+        Assert.Equal(resultA.Offer!.Id, resultB.Offer!.Id);
+
+        await using var verifyScope = environment.Application.Services.CreateAsyncScope();
+        var db = verifyScope.ServiceProvider.GetRequiredService<DispatchDbContext>();
+        Assert.Equal(1, await db.AllocationRuns.CountAsync(run => run.SourceOfferId == sourceOffer.Id));
     }
 
     private static async Task<(JsonElement Run, JsonElement? Offer)> ReplaceAsync(HttpClient client, Guid offerId)
