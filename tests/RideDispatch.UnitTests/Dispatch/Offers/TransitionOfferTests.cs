@@ -117,7 +117,7 @@ public sealed class TransitionOfferTests
         Assert.Equal(1, store.SaveCount);
     }
 
-    private static Offer CreateOffer() => Offer.Create(Guid.NewGuid(), Guid.NewGuid(), TimeSpan.FromSeconds(20), CreatedAt);
+    private static Offer CreateOffer() => Offer.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), TimeSpan.FromSeconds(20), CreatedAt);
 
     private static Task<TransitionOfferResult> Execute(string action, StubOfferStore store, CountingTimeProvider clock, Guid id) => action switch
     {
@@ -144,6 +144,7 @@ public sealed class TransitionOfferTests
         public Task AddAsync(Offer value, CancellationToken ct) => throw new NotSupportedException();
         public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => Task.FromResult(ConcurrencyWinner);
         public Task<Offer?> FindByAllocationRunIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<Offer?> FindActionableByRideRequestIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class CountingTimeProvider(DateTimeOffset now) : TimeProvider

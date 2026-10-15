@@ -26,7 +26,7 @@ public sealed class OfferTests
     public void Dispatcher_override_captures_mode_and_trimmed_reason()
     {
         var offer = Offer.CreateDispatcherOverride(
-            Guid.NewGuid(), Guid.NewGuid(), "  Operational preference  ", Ttl, CurrentTime);
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "  Operational preference  ", Ttl, CurrentTime);
         Assert.Equal(OfferSelectionMode.DispatcherOverride, offer.SelectionMode);
         Assert.Equal("Operational preference", offer.OverrideReason);
     }
@@ -37,18 +37,18 @@ public sealed class OfferTests
     [InlineData("   ")]
     public void Dispatcher_override_rejects_missing_reason(string? reason) =>
         Assert.ThrowsAny<ArgumentException>(() => Offer.CreateDispatcherOverride(
-            Guid.NewGuid(), Guid.NewGuid(), reason!, Ttl, CurrentTime));
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), reason!, Ttl, CurrentTime));
 
     [Fact]
     public void Dispatcher_override_rejects_reason_over_500_characters() =>
         Assert.Throws<ArgumentException>(() => Offer.CreateDispatcherOverride(
-            Guid.NewGuid(), Guid.NewGuid(), new string('x', 501), Ttl, CurrentTime));
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new string('x', 501), Ttl, CurrentTime));
 
     [Fact]
     public void Dispatcher_override_accepts_exactly_500_characters()
     {
         var offer = Offer.CreateDispatcherOverride(
-            Guid.NewGuid(), Guid.NewGuid(), new string('x', 500), Ttl, CurrentTime);
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new string('x', 500), Ttl, CurrentTime);
         Assert.Equal(500, offer.OverrideReason!.Length);
     }
 
@@ -56,7 +56,7 @@ public sealed class OfferTests
     public void Dispatcher_override_uses_existing_lifecycle()
     {
         var offer = Offer.CreateDispatcherOverride(
-            Guid.NewGuid(), Guid.NewGuid(), "Alternate eligible driver", Ttl, CurrentTime);
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Alternate eligible driver", Ttl, CurrentTime);
         offer.Decline(offer.ExpiresAt.AddTicks(-1));
         Assert.Equal(OfferStatus.Declined, offer.Status);
         Assert.Equal(offer.ExpiresAt.AddTicks(-1), offer.ResolvedAt);
@@ -69,7 +69,7 @@ public sealed class OfferTests
     {
         var allocationRunId = emptyAllocationRunId ? Guid.Empty : Guid.NewGuid();
         var driverId = emptyAllocationRunId ? Guid.NewGuid() : Guid.Empty;
-        Assert.Throws<ArgumentException>(() => Offer.Create(allocationRunId, driverId, Ttl, CurrentTime));
+        Assert.Throws<ArgumentException>(() => Offer.Create(allocationRunId, Guid.NewGuid(), driverId, Ttl, CurrentTime));
     }
 
     [Theory]
@@ -77,7 +77,7 @@ public sealed class OfferTests
     [InlineData(-1)]
     public void Creation_rejects_non_positive_ttl(int seconds) =>
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            Offer.Create(Guid.NewGuid(), Guid.NewGuid(), TimeSpan.FromSeconds(seconds), CurrentTime));
+            Offer.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), TimeSpan.FromSeconds(seconds), CurrentTime));
 
     [Theory]
     [InlineData(OfferStatus.Accepted)]
@@ -147,7 +147,7 @@ public sealed class OfferTests
         Assert.Throws<InvalidOperationException>(() => offer.Withdraw(offer.ExpiresAt.AddSeconds(1)));
     }
 
-    private static Offer Create() => Offer.Create(Guid.NewGuid(), Guid.NewGuid(), Ttl, CurrentTime);
+    private static Offer Create() => Offer.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Ttl, CurrentTime);
 
     private static void Transition(Offer offer, OfferStatus target, DateTimeOffset at)
     {

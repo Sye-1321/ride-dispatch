@@ -262,7 +262,7 @@ public sealed class CreateDispatcherOverrideOfferTests
         public Task AddAsync(Offer offer, CancellationToken ct) { AddCount++; return Task.CompletedTask; }
         public Task<Offer?> FindByAllocationRunIdAsync(Guid id, CancellationToken ct) =>
             Task.FromResult(existingOffer && run is not null
-                ? Offer.Create(run.Id, run.RecommendedDriverId!.Value, TimeSpan.FromMinutes(1), Now)
+                ? Offer.Create(run.Id, run.RideRequestId, run.RecommendedDriverId!.Value, TimeSpan.FromMinutes(1), Now)
                 : null);
         public Task SaveChangesAsync(CancellationToken ct)
         {
@@ -273,6 +273,7 @@ public sealed class CreateDispatcherOverrideOfferTests
         }
         public Task<Offer?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<Offer?> FindActionableByRideRequestIdAsync(Guid id, CancellationToken ct) => Task.FromResult<Offer?>(null);
     }
 
     private sealed class RideStoreStub(RideRequest? ride) : IRideRequestStore

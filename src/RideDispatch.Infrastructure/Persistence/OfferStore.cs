@@ -23,6 +23,12 @@ public sealed class OfferStore(DispatchDbContext dbContext) : IOfferStore
             .AsNoTracking()
             .SingleOrDefaultAsync(offer => offer.AllocationRunId == allocationRunId, cancellationToken);
 
+    public Task<Offer?> FindActionableByRideRequestIdAsync(Guid rideRequestId, CancellationToken cancellationToken) =>
+        dbContext.Offers.SingleOrDefaultAsync(
+            offer => offer.RideRequestId == rideRequestId &&
+                (offer.Status == OfferStatus.Pending || offer.Status == OfferStatus.Accepted),
+            cancellationToken);
+
     public async Task SaveChangesAsync(CancellationToken cancellationToken)
     {
         try
@@ -33,7 +39,7 @@ public sealed class OfferStore(DispatchDbContext dbContext) : IOfferStore
             exception.InnerException is PostgresException
             {
                 SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: "ux_offers_allocation_run_id",
+                ConstraintName: "ux_offers_allocation_run_id" or "ux_offers_actionable_ride_request_id",
             })
         {
             dbContext.ChangeTracker.Clear();

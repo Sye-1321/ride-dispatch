@@ -90,8 +90,14 @@ public sealed class CreateDispatcherOverrideOffer(
             return new(CreateDispatcherOverrideOfferOutcome.ScheduledPickupElapsed);
         }
 
+        if (!await new RideOfferAvailability(offerStore).CanCreateAsync(
+                allocationRun.RideRequestId, now, cancellationToken))
+        {
+            return new(CreateDispatcherOverrideOfferOutcome.OfferAlreadyExists);
+        }
+
         var offer = Offer.CreateDispatcherOverride(
-            allocationRunId, driverId, normalizedReason, policy.Ttl, now);
+            allocationRunId, allocationRun.RideRequestId, driverId, normalizedReason, policy.Ttl, now);
         await offerStore.AddAsync(offer, cancellationToken);
         try
         {

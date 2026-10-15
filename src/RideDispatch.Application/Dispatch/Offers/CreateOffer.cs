@@ -60,8 +60,15 @@ public sealed class CreateOffer(
             return new(CreateOfferOutcome.ScheduledPickupElapsed);
         }
 
+        if (!await new RideOfferAvailability(offerStore).CanCreateAsync(
+                allocationRun.RideRequestId, now, cancellationToken))
+        {
+            return new(CreateOfferOutcome.OfferAlreadyExists);
+        }
+
         var offer = Offer.Create(
             allocationRunId,
+            allocationRun.RideRequestId,
             allocationRun.RecommendedDriverId.Value,
             policy.Ttl,
             now);

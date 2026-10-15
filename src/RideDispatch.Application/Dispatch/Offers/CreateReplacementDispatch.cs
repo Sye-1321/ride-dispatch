@@ -11,6 +11,7 @@ public enum CreateReplacementDispatchOutcome
     OfferNotFound,
     SourceOfferNotFailed,
     ScheduledPickupElapsed,
+    OfferAlreadyExists,
 }
 
 public sealed record CreateReplacementDispatchResult(
@@ -153,9 +154,11 @@ public sealed class CreateReplacementDispatch(
             }
 
             replacementOffer = await offerStore.FindByAllocationRunIdAsync(
-                replacementRun.Id,
-                cancellationToken)
-                ?? throw new InvalidOperationException("The winning replacement offer could not be loaded.");
+                replacementRun.Id, cancellationToken);
+            if (replacementOffer is null)
+            {
+                return new(CreateReplacementDispatchOutcome.OfferAlreadyExists, sourceOfferId);
+            }
         }
 
         return Success(sourceOfferId, replacementRun, replacementOffer);

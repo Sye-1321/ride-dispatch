@@ -8,6 +8,7 @@ public interface IOfferStore
     Task<Offer?> FindByIdAsync(Guid id, CancellationToken cancellationToken);
     Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken cancellationToken);
     Task<Offer?> FindByAllocationRunIdAsync(Guid allocationRunId, CancellationToken cancellationToken);
+    Task<Offer?> FindActionableByRideRequestIdAsync(Guid rideRequestId, CancellationToken cancellationToken);
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 

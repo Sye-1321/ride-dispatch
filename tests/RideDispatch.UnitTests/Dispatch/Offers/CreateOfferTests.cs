@@ -40,6 +40,7 @@ public sealed class CreateOfferTests
         var result = await CreateUseCase(run, store).ExecuteAsync(run.Id, CancellationToken.None);
         Assert.Equal(CreateOfferOutcome.Success, result.Outcome);
         Assert.Equal(driverId, store.Added!.DriverId);
+        Assert.Equal(run.RideRequestId, store.Added.RideRequestId);
         Assert.Equal(OfferSelectionMode.Recommended, store.Added.SelectionMode);
         Assert.Null(store.Added.OverrideReason);
         Assert.Equal(TimeSpan.FromSeconds(37), store.Added.ExpiresAt - store.Added.CreatedAt);
@@ -52,7 +53,7 @@ public sealed class CreateOfferTests
     {
         var driverId = Guid.NewGuid();
         var run = AllocationRun.Create(Guid.NewGuid(), DispatchRankingPolicy.Nearest, driverId, CurrentTime);
-        var store = new StubOfferStore { Existing = Offer.Create(run.Id, driverId, TimeSpan.FromSeconds(1), CurrentTime) };
+        var store = new StubOfferStore { Existing = Offer.Create(run.Id, run.RideRequestId, driverId, TimeSpan.FromSeconds(1), CurrentTime) };
         var result = await CreateUseCase(run, store).ExecuteAsync(run.Id, CancellationToken.None);
         Assert.Equal(CreateOfferOutcome.OfferAlreadyExists, result.Outcome);
         Assert.Equal(0, store.AddCount);
@@ -175,6 +176,7 @@ public sealed class CreateOfferTests
         public bool ThrowDuplicateOnSave { get; init; }
         public Task AddAsync(Offer offer, CancellationToken ct) { Added = offer; AddCount++; return Task.CompletedTask; }
         public Task<Offer?> FindByAllocationRunIdAsync(Guid id, CancellationToken ct) => Task.FromResult(Existing);
+        public Task<Offer?> FindActionableByRideRequestIdAsync(Guid id, CancellationToken ct) => Task.FromResult<Offer?>(null);
         public Task<Offer?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task SaveChangesAsync(CancellationToken ct)

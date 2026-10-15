@@ -231,6 +231,107 @@ public sealed class OfferTests
         Assert.Equal(HttpStatusCode.Conflict, elapsedResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task Competing_runs_for_same_ride_cannot_both_create_actionable_offers()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var rideId = await CreateRideAsync(environment.Client);
+        await CreateEligibleDriverAsync(environment.Client);
+        await CreateEligibleDriverAsync(environment.Client, "002", 9.04);
+        var firstRun = await CreateRunAsync(environment.Client, rideId);
+        var secondRun = await CreateRunAsync(environment.Client, rideId);
+
+        var responses = await Task.WhenAll(
+            environment.Client.PostAsync($"/api/v1/allocation-runs/{firstRun}/offers", null),
+            environment.Client.PostAsync($"/api/v1/allocation-runs/{secondRun}/offers", null));
+
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+        await using var scope = environment.Application.Services.CreateAsyncScope();
+        Assert.Equal(1, await scope.ServiceProvider.GetRequiredService<DispatchDbContext>().Offers
+            .CountAsync(offer => offer.RideRequestId == rideId &&
+                (offer.Status == OfferStatus.Pending || offer.Status == OfferStatus.Accepted)));
+        foreach (var response in responses) response.Dispose();
+    }
+
+    [Fact]
+    public async Task Elapsed_pending_offer_is_expired_before_next_run_creates_offer()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var rideId = await CreateRideAsync(environment.Client);
+        await CreateEligibleDriverAsync(environment.Client);
+        var firstRun = await CreateRunAsync(environment.Client, rideId);
+        using var firstResponse = await environment.Client.PostAsync(
+            $"/api/v1/allocation-runs/{firstRun}/offers", null);
+        firstResponse.EnsureSuccessStatusCode();
+        var first = await firstResponse.Content.ReadFromJsonAsync<JsonElement>();
+
+        environment.Clock.Set(first.GetProperty("expiresAt").GetDateTimeOffset());
+        var secondRun = await CreateRunAsync(environment.Client, rideId);
+        using var secondResponse = await environment.Client.PostAsync(
+            $"/api/v1/allocation-runs/{secondRun}/offers", null);
+        Assert.Equal(HttpStatusCode.Created, secondResponse.StatusCode);
+
+        await using var scope = environment.Application.Services.CreateAsyncScope();
+        var offers = await scope.ServiceProvider.GetRequiredService<DispatchDbContext>().Offers
+            .Where(offer => offer.RideRequestId == rideId).OrderBy(offer => offer.CreatedAt).ToListAsync();
+        Assert.Equal([OfferStatus.Expired, OfferStatus.Pending], offers.Select(offer => offer.Status));
+    }
+
+    [Fact]
+    public async Task Accepted_offer_blocks_new_runs_after_assignment_is_cancelled()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var rideId = await CreateRideAsync(environment.Client);
+        await CreateEligibleDriverAsync(environment.Client);
+        var firstRun = await CreateRunAsync(environment.Client, rideId);
+        using var create = await environment.Client.PostAsync($"/api/v1/allocation-runs/{firstRun}/offers", null);
+        create.EnsureSuccessStatusCode();
+        var offerId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        using var accept = await environment.Client.PostAsync($"/api/v1/offers/{offerId}/accept", null);
+        accept.EnsureSuccessStatusCode();
+        using var assign = await environment.Client.PostAsync($"/api/v1/offers/{offerId}/assignments", null);
+        assign.EnsureSuccessStatusCode();
+        var assignmentId = (await assign.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        using var cancel = await environment.Client.PostAsync($"/api/v1/assignments/{assignmentId}/cancel", null);
+        cancel.EnsureSuccessStatusCode();
+
+        var secondRun = await CreateRunAsync(environment.Client, rideId);
+        using var blocked = await environment.Client.PostAsync(
+            $"/api/v1/allocation-runs/{secondRun}/offers", null);
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+
+        await using var scope = environment.Application.Services.CreateAsyncScope();
+        var offers = scope.ServiceProvider.GetRequiredService<DispatchDbContext>().Offers;
+        Assert.Equal(1, await offers.CountAsync(offer => offer.RideRequestId == rideId));
+        Assert.Equal(OfferStatus.Accepted, (await offers.SingleAsync(offer => offer.RideRequestId == rideId)).Status);
+    }
+
+    [Fact]
+    public async Task Replacement_dispatch_returns_conflict_when_another_run_has_actionable_offer()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var rideId = await CreateRideAsync(environment.Client);
+        await CreateEligibleDriverAsync(environment.Client);
+        await CreateEligibleDriverAsync(environment.Client, "003", 9.04);
+        var sourceRun = await CreateRunAsync(environment.Client, rideId);
+        using var sourceCreate = await environment.Client.PostAsync(
+            $"/api/v1/allocation-runs/{sourceRun}/offers", null);
+        sourceCreate.EnsureSuccessStatusCode();
+        var sourceOfferId = (await sourceCreate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        using var decline = await environment.Client.PostAsync($"/api/v1/offers/{sourceOfferId}/decline", null);
+        decline.EnsureSuccessStatusCode();
+
+        var blockingRun = await CreateRunAsync(environment.Client, rideId);
+        using var blockingCreate = await environment.Client.PostAsync(
+            $"/api/v1/allocation-runs/{blockingRun}/offers", null);
+        blockingCreate.EnsureSuccessStatusCode();
+
+        using var replacement = await environment.Client.PostAsync(
+            $"/api/v1/offers/{sourceOfferId}/replacement-dispatch", null);
+        Assert.Equal(HttpStatusCode.Conflict, replacement.StatusCode);
+    }
+
     private static async Task<Guid> CreateRideAsync(HttpClient client, DateTimeOffset? requestedPickupAt = null)
     {
         using var response = await client.PostAsJsonAsync("/api/v1/ride-requests", new
@@ -257,17 +358,20 @@ public sealed class OfferTests
         return id;
     }
 
-    private static async Task<Guid> CreateEligibleDriverAsync(HttpClient client)
+    private static async Task<Guid> CreateEligibleDriverAsync(
+        HttpClient client,
+        string suffix = "001",
+        double latitude = 9.031)
     {
-        using var create = await client.PostAsJsonAsync("/api/v1/drivers", new { name = "Offer Driver" });
+        using var create = await client.PostAsJsonAsync("/api/v1/drivers", new { name = $"Offer Driver {suffix}" });
         create.EnsureSuccessStatusCode();
         var id = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         foreach (var response in new[]
         {
             await client.PutAsJsonAsync($"/api/v1/drivers/{id}/approval", new { status = "APPROVED" }),
             await client.PutAsJsonAsync($"/api/v1/drivers/{id}/operational-status", new { status = "AVAILABLE" }),
-            await client.PostAsJsonAsync($"/api/v1/drivers/{id}/vehicle", new { type = "STANDARD", plateNumber = "OFFER-001" }),
-            await client.PutAsJsonAsync($"/api/v1/drivers/{id}/location", new { latitude = 9.031, longitude = 38.74 }),
+            await client.PostAsJsonAsync($"/api/v1/drivers/{id}/vehicle", new { type = "STANDARD", plateNumber = $"OFFER-{suffix}" }),
+            await client.PutAsJsonAsync($"/api/v1/drivers/{id}/location", new { latitude, longitude = 38.74 }),
             await client.PutAsJsonAsync($"/api/v1/drivers/{id}/financial-standing", new { commissionBalance = 1m }),
         })
         {

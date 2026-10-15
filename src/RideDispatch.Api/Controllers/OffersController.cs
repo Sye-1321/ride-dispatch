@@ -101,6 +101,7 @@ public sealed class OffersController : ControllerBase
                 ReplacementDispatchResponse.FromResult(result)),
             CreateReplacementDispatchOutcome.OfferNotFound => NotFound(),
             CreateReplacementDispatchOutcome.SourceOfferNotFailed or
+                CreateReplacementDispatchOutcome.OfferAlreadyExists or
                 CreateReplacementDispatchOutcome.ScheduledPickupElapsed => Conflict(),
             _ => throw new InvalidOperationException("Unknown replacement dispatch outcome."),
         };

@@ -83,7 +83,7 @@ public sealed class CreateReplacementDispatchTests
             fixture.DriverId,
             fixture.SourceOffer!.Id,
             Now);
-        var existingOffer = Offer.Create(existingRun.Id, fixture.DriverId, TimeSpan.FromMinutes(1), Now);
+        var existingOffer = Offer.Create(existingRun.Id, existingRun.RideRequestId, fixture.DriverId, TimeSpan.FromMinutes(1), Now);
         fixture.Runs.ExistingReplacement = existingRun;
         fixture.Offers.ExistingByRun = existingOffer;
 
@@ -144,7 +144,7 @@ public sealed class CreateReplacementDispatchTests
     {
         var fixture = Fixture.WithSource(OfferStatus.Pending, Now.AddSeconds(-30));
         var winner = Offer.Create(
-            fixture.SourceRun!.Id, fixture.SourceOffer!.DriverId, TimeSpan.FromSeconds(30), fixture.SourceOffer.CreatedAt);
+            fixture.SourceRun!.Id, fixture.SourceRun.RideRequestId, fixture.SourceOffer!.DriverId, TimeSpan.FromSeconds(30), fixture.SourceOffer.CreatedAt);
         if (winningStatus == OfferStatus.Accepted) winner.Accept(fixture.SourceOffer.CreatedAt.AddSeconds(1));
         else winner.Withdraw(fixture.SourceOffer.CreatedAt.AddSeconds(1));
 
@@ -163,7 +163,7 @@ public sealed class CreateReplacementDispatchTests
     {
         var fixture = Fixture.WithSource(OfferStatus.Pending, Now.AddSeconds(-30));
         var winner = Offer.Create(
-            fixture.SourceRun!.Id, fixture.SourceOffer!.DriverId, TimeSpan.FromSeconds(30), fixture.SourceOffer.CreatedAt);
+            fixture.SourceRun!.Id, fixture.SourceRun.RideRequestId, fixture.SourceOffer!.DriverId, TimeSpan.FromSeconds(30), fixture.SourceOffer.CreatedAt);
         if (winningStatus == OfferStatus.Expired) winner.Expire(fixture.SourceOffer.ExpiresAt);
         else winner.Decline(fixture.SourceOffer.CreatedAt.AddSeconds(1));
 
@@ -225,7 +225,7 @@ public sealed class CreateReplacementDispatchTests
             fixture.DriverId,
             fixture.SourceOffer!.Id,
             pickup.AddMinutes(-5));
-        var existingOffer = Offer.Create(existingRun.Id, fixture.DriverId, TimeSpan.FromMinutes(1), pickup.AddMinutes(-5));
+        var existingOffer = Offer.Create(existingRun.Id, existingRun.RideRequestId, fixture.DriverId, TimeSpan.FromMinutes(1), pickup.AddMinutes(-5));
         fixture.Runs.ExistingReplacement = existingRun;
         fixture.Offers.ExistingByRun = existingOffer;
 
@@ -342,7 +342,7 @@ public sealed class CreateReplacementDispatchTests
                 policy,
                 Guid.NewGuid(),
                 Now.AddMinutes(-2));
-            var offer = Offer.Create(run.Id, run.RecommendedDriverId!.Value, TimeSpan.FromSeconds(30), createdAt ?? Now.AddMinutes(-2));
+            var offer = Offer.Create(run.Id, run.RideRequestId, run.RecommendedDriverId!.Value, TimeSpan.FromSeconds(30), createdAt ?? Now.AddMinutes(-2));
             if (status != OfferStatus.Pending)
             {
                 if (status == OfferStatus.Expired) offer.Expire(offer.ExpiresAt);
@@ -373,6 +373,7 @@ public sealed class CreateReplacementDispatchTests
                 currentTime.AddMinutes(-2));
             var offer = Offer.Create(
                 run.Id,
+                run.RideRequestId,
                 run.RecommendedDriverId!.Value,
                 TimeSpan.FromSeconds(30),
                 offerCreatedAt ?? currentTime.AddMinutes(-2));
@@ -430,6 +431,7 @@ public sealed class CreateReplacementDispatchTests
         public Task<Offer?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(source?.Id == id ? source : null);
         public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => Task.FromResult(WinnerOnSaveRace ?? (source?.Id == id ? source : null));
         public Task<Offer?> FindByAllocationRunIdAsync(Guid id, CancellationToken ct) => Task.FromResult(ExistingByRun?.AllocationRunId == id ? ExistingByRun : null);
+        public Task<Offer?> FindActionableByRideRequestIdAsync(Guid id, CancellationToken ct) => Task.FromResult<Offer?>(null);
         public Task SaveChangesAsync(CancellationToken ct)
         {
             SaveCount++;

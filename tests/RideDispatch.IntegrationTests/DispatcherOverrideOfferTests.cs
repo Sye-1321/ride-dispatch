@@ -376,6 +376,7 @@ public sealed class DispatcherOverrideOfferTests
         public Task AddAsync(Offer offer, CancellationToken ct) => inner.AddAsync(offer, ct);
         public Task<Offer?> FindByIdAsync(Guid id, CancellationToken ct) => inner.FindByIdAsync(id, ct);
         public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => inner.FindByIdReadOnlyAsync(id, ct);
+        public Task<Offer?> FindActionableByRideRequestIdAsync(Guid id, CancellationToken ct) => inner.FindActionableByRideRequestIdAsync(id, ct);
         public async Task<Offer?> FindByAllocationRunIdAsync(Guid id, CancellationToken ct)
         {
             var result = await inner.FindByAllocationRunIdAsync(id, ct);

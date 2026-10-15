@@ -44,7 +44,7 @@ public sealed class CreateAssignmentTests
         var driverId = Guid.NewGuid();
         var ride = Ride(RideTiming.Immediate);
         var run = AllocationRun.Create(ride.Id, DispatchRankingPolicy.Nearest, driverId, Now.AddMinutes(-1));
-        var offer = Offer.Create(run.Id, driverId, TimeSpan.FromHours(1), Now.AddMinutes(-1));
+        var offer = Offer.Create(run.Id, ride.Id, driverId, TimeSpan.FromHours(1), Now.AddMinutes(-1));
         offer.Accept(Now.AddSeconds(-1));
         var store = new StubAssignmentStore();
         var clock = new CountingClock(Now);
@@ -156,7 +156,7 @@ public sealed class CreateAssignmentTests
     {
         var ride = Ride(RideTiming.Scheduled, pickup);
         var run = AllocationRun.Create(ride.Id, DispatchRankingPolicy.Nearest, Guid.NewGuid(), Now.AddMinutes(-2));
-        var offer = Offer.Create(run.Id, run.RecommendedDriverId!.Value, TimeSpan.FromHours(1), Now.AddMinutes(-1));
+        var offer = Offer.Create(run.Id, ride.Id, run.RecommendedDriverId!.Value, TimeSpan.FromHours(1), Now.AddMinutes(-1));
         offer.Accept(Now.AddSeconds(-1));
         return await CreateOperation(offer, run, ride, new(), new(Now)).ExecuteAsync(offer.Id, default);
     }
@@ -165,7 +165,7 @@ public sealed class CreateAssignmentTests
     {
         var ride = Ride(RideTiming.Immediate);
         var run = AllocationRun.Create(ride.Id, DispatchRankingPolicy.Nearest, Guid.NewGuid(), Now.AddMinutes(-2));
-        var offer = Offer.Create(run.Id, run.RecommendedDriverId!.Value, TimeSpan.FromHours(1), Now.AddMinutes(-1));
+        var offer = Offer.Create(run.Id, ride.Id, run.RecommendedDriverId!.Value, TimeSpan.FromHours(1), Now.AddMinutes(-1));
         offer.Accept(Now.AddSeconds(-1));
         return (offer, run, ride);
     }
@@ -176,7 +176,7 @@ public sealed class CreateAssignmentTests
 
     private static Offer OfferWithStatus(OfferStatus status)
     {
-        var offer = Offer.Create(Guid.NewGuid(), Guid.NewGuid(), TimeSpan.FromMinutes(10), Now.AddMinutes(-2));
+        var offer = Offer.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), TimeSpan.FromMinutes(10), Now.AddMinutes(-2));
         if (status == OfferStatus.Pending) return offer;
         if (status == OfferStatus.Declined) offer.Decline(Now.AddMinutes(-1));
         if (status == OfferStatus.Withdrawn) offer.Withdraw(Now.AddMinutes(-1));
@@ -197,6 +197,7 @@ public sealed class CreateAssignmentTests
         public Task AddAsync(Offer x, CancellationToken ct) => throw new NotSupportedException();
         public Task<Offer?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<Offer?> FindByAllocationRunIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task<Offer?> FindActionableByRideRequestIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task SaveChangesAsync(CancellationToken ct) => throw new NotSupportedException();
     }
     private sealed class RunStoreStub(AllocationRun? value) : IAllocationRunStore
