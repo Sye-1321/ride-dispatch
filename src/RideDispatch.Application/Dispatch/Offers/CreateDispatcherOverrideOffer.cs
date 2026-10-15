@@ -1,5 +1,7 @@
 using RideDispatch.Application.Dispatch.AllocationRuns;
+using RideDispatch.Application.RideRequests;
 using RideDispatch.Domain.Dispatch;
+using RideDispatch.Domain.RideRequests;
 
 namespace RideDispatch.Application.Dispatch.Offers;
 
@@ -12,6 +14,7 @@ public enum CreateDispatcherOverrideOfferOutcome
     DriverAlreadyRecommended,
     InvalidReason,
     OfferAlreadyExists,
+    ScheduledPickupElapsed,
 }
 
 public sealed record CreateDispatcherOverrideOfferResult(
@@ -19,6 +22,7 @@ public sealed record CreateDispatcherOverrideOfferResult(
 
 public sealed class CreateDispatcherOverrideOffer(
     IAllocationRunStore allocationRunStore,
+    IRideRequestStore rideRequestStore,
     IOfferStore offerStore,
     OfferPolicy policy,
     TimeProvider timeProvider)
@@ -75,8 +79,19 @@ public sealed class CreateDispatcherOverrideOffer(
             return new(CreateDispatcherOverrideOfferOutcome.OfferAlreadyExists);
         }
 
+        var rideRequest = await rideRequestStore.FindByIdAsync(allocationRun.RideRequestId, cancellationToken)
+            ?? throw new InvalidOperationException("An allocation run references a missing ride request.");
+
+        var now = timeProvider.GetUtcNow();
+
+        if (rideRequest.Timing == RideTiming.Scheduled &&
+            rideRequest.HasScheduledPickupElapsed(now))
+        {
+            return new(CreateDispatcherOverrideOfferOutcome.ScheduledPickupElapsed);
+        }
+
         var offer = Offer.CreateDispatcherOverride(
-            allocationRunId, driverId, normalizedReason, policy.Ttl, timeProvider.GetUtcNow());
+            allocationRunId, driverId, normalizedReason, policy.Ttl, now);
         await offerStore.AddAsync(offer, cancellationToken);
         try
         {

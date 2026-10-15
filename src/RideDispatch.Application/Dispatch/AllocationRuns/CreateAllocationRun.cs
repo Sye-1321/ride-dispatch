@@ -39,7 +39,7 @@ public sealed class CreateAllocationRun(
                 return new(CreateAllocationRunOutcome.ScheduledDispatchNotActivated);
             }
 
-            if (timeProvider.GetUtcNow() > rideRequest.RequestedPickupAt)
+            if (rideRequest.HasScheduledPickupElapsed(timeProvider.GetUtcNow()))
             {
                 return new(CreateAllocationRunOutcome.ScheduledPickupElapsed);
             }

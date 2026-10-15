@@ -1,6 +1,9 @@
 using RideDispatch.Application.Dispatch.AllocationRuns;
 using RideDispatch.Application.Dispatch.Offers;
+using RideDispatch.Application.RideRequests;
 using RideDispatch.Domain.Dispatch;
+using RideDispatch.Domain.RideRequests;
+using RideDispatch.Domain.Vehicles;
 
 namespace RideDispatch.UnitTests.Dispatch.Offers;
 
@@ -109,21 +112,73 @@ public sealed class CreateDispatcherOverrideOfferTests
         Assert.Equal(1, fixture.Offers.AddCount);
     }
 
+    [Fact]
+    public async Task Scheduled_ride_at_exact_pickup_allows_dispatcher_override()
+    {
+        var pickup = Now;
+        var ride = RideRequest.Create(
+            null, "Scheduled Passenger", "+251911000000", BookingSource.CallCenter,
+            RideTiming.Scheduled, 9.03, 38.74, 9.01, 38.78,
+            VehicleType.Standard, pickup, 1200, pickup.AddMinutes(-30));
+        ride.ActivateDispatch(pickup.AddMinutes(-20), TimeSpan.FromMinutes(30));
+
+        var fixture = Fixture.WithRide(ride, Now);
+        var result = await fixture.UseCase.ExecuteAsync(
+            fixture.Run!.Id, fixture.AlternateDriverId, "Valid override reason", default);
+
+        Assert.Equal(CreateDispatcherOverrideOfferOutcome.Success, result.Outcome);
+        Assert.NotNull(result.Offer);
+        Assert.Equal(1, fixture.Offers.AddCount);
+        Assert.Equal(1, fixture.Offers.SaveCount);
+    }
+
+    [Fact]
+    public async Task Scheduled_ride_after_pickup_is_rejected_without_persisting()
+    {
+        var pickup = Now.AddMinutes(-1);
+        var ride = RideRequest.Create(
+            null, "Scheduled Passenger", "+251911000000", BookingSource.CallCenter,
+            RideTiming.Scheduled, 9.03, 38.74, 9.01, 38.78,
+            VehicleType.Standard, pickup, 1200, pickup.AddMinutes(-30));
+        ride.ActivateDispatch(pickup.AddMinutes(-20), TimeSpan.FromMinutes(30));
+
+        var fixture = Fixture.WithRide(ride, Now);
+        var result = await fixture.UseCase.ExecuteAsync(
+            fixture.Run!.Id, fixture.AlternateDriverId, "Valid override reason", default);
+
+        Assert.Equal(CreateDispatcherOverrideOfferOutcome.ScheduledPickupElapsed, result.Outcome);
+        Assert.Null(result.Offer);
+        Assert.Equal(0, fixture.Offers.AddCount);
+        Assert.Equal(0, fixture.Offers.SaveCount);
+    }
+
     private sealed class Fixture
     {
         private Fixture(AllocationRun? run, IReadOnlyList<AllocationCandidateEvaluation>? evaluations,
             bool existingOffer, bool uniqueRace, Guid recommendedDriverId,
-            Guid alternateDriverId, Guid rejectedDriverId)
+            Guid alternateDriverId, Guid rejectedDriverId,
+            RideRequest? rideRequest = null,
+            DateTimeOffset? clockTime = null)
         {
+            var now = clockTime ?? Now;
             Run = run;
             RecommendedDriverId = recommendedDriverId;
             AlternateDriverId = alternateDriverId;
             RejectedDriverId = rejectedDriverId;
-            Clock = new CountingClock(Now);
+            Clock = new CountingClock(now);
             Offers = new OfferStoreStub(run, existingOffer, uniqueRace);
+            var ride = rideRequest ?? (run is not null
+                ? RideRequest.Create(
+                    null, "Passenger", "+251911000000", BookingSource.CallCenter,
+                    RideTiming.Immediate, 9.03, 38.74, 9.01, 38.78,
+                    VehicleType.Standard, null, 1200, now)
+                : null);
             UseCase = new CreateDispatcherOverrideOffer(
-                new RunStoreStub(run, evaluations), Offers,
-                new OfferPolicy(TimeSpan.FromSeconds(37)), Clock);
+                new RunStoreStub(run, evaluations),
+                new RideStoreStub(ride),
+                Offers,
+                new OfferPolicy(TimeSpan.FromSeconds(37)),
+                Clock);
         }
 
         public AllocationRun? Run { get; }
@@ -154,6 +209,22 @@ public sealed class CreateDispatcherOverrideOfferTests
                 evaluations.Add(Rejected(run.Id, rejected));
             return new(run, evaluations, existingOffer, uniqueRace,
                 recommended, alternate, rejected);
+        }
+
+        public static Fixture WithRide(RideRequest rideRequest, DateTimeOffset clockTime)
+        {
+            var recommended = Guid.NewGuid();
+            var alternate = Guid.NewGuid();
+            var rejected = Guid.NewGuid();
+            var run = AllocationRun.Create(rideRequest.Id, DispatchRankingPolicy.Nearest,
+                recommended, clockTime.AddMinutes(-2));
+            var evaluations = new List<AllocationCandidateEvaluation>
+            {
+                Eligible(run.Id, recommended, 1),
+                Eligible(run.Id, alternate, 2),
+            };
+            return new(run, evaluations, false, false,
+                recommended, alternate, rejected, rideRequest, clockTime);
         }
 
         private static AllocationCandidateEvaluation Eligible(Guid runId, Guid driverId, int rank) =>
@@ -202,5 +273,14 @@ public sealed class CreateDispatcherOverrideOfferTests
         }
         public Task<Offer?> FindByIdAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<Offer?> FindByIdReadOnlyAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    private sealed class RideStoreStub(RideRequest? ride) : IRideRequestStore
+    {
+        public Task<RideRequest?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(ride);
+        public Task<RideRequest?> FindByIdTrackedAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+        public Task AddAsync(RideRequest value, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<RideRequest>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task SaveChangesAsync(CancellationToken ct) => throw new NotSupportedException();
     }
 }

@@ -205,6 +205,56 @@ public sealed class DispatcherOverrideOfferTests
         Assert.Contains("override_reason", check, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Scheduled_override_at_exact_pickup_succeeds_and_after_pickup_returns_conflict()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var pickup = Now.AddMinutes(10);
+        var ride = await CreateScheduledRideAsync(environment.Client, pickup);
+        var driverA = await CreateDriverAsync(environment.Client, "Sched Rec", 9.031);
+        var driverB = await CreateDriverAsync(environment.Client, "Sched Alt", 9.04);
+        var run = await CreateRunAsync(environment.Client, ride, driverA);
+
+        // At exact pickup: override succeeds
+        environment.Clock.Set(pickup);
+        using var exact = await OverrideAsync(environment.Client, run, driverB, "Exact pickup override");
+        Assert.Equal(HttpStatusCode.Created, exact.StatusCode);
+
+        // For another scheduled ride whose pickup has passed: override returns Conflict
+        var secondPickup = Now.AddMinutes(10);
+        environment.Clock.Set(Now);
+        var secondRide = await CreateScheduledRideAsync(environment.Client, secondPickup);
+        var secondRun = await CreateRunAsync(environment.Client, secondRide, driverA);
+
+        environment.Clock.Set(secondPickup.AddSeconds(1));
+        using var elapsed = await OverrideAsync(environment.Client, secondRun, driverB, "Late override");
+        Assert.Equal(HttpStatusCode.Conflict, elapsed.StatusCode);
+        await AssertNoOfferAsync(environment, secondRun);
+    }
+
+    private static async Task<Guid> CreateScheduledRideAsync(HttpClient client, DateTimeOffset pickupAt)
+    {
+        using var response = await client.PostAsJsonAsync("/api/v1/ride-requests", new
+        {
+            contactName = "Scheduled Override Passenger",
+            contactPhone = "+251911000077",
+            bookingSource = "CALL_CENTER",
+            timing = "SCHEDULED",
+            pickupLatitude = 9.03,
+            pickupLongitude = 38.74,
+            destinationLatitude = 9.01,
+            destinationLongitude = 38.78,
+            requiredVehicleType = "STANDARD",
+            requestedPickupAt = pickupAt,
+            estimatedTripDurationSeconds = 1200,
+        });
+        response.EnsureSuccessStatusCode();
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        using var activate = await client.PostAsync($"/api/v1/ride-requests/{id}/activate-dispatch", null);
+        activate.EnsureSuccessStatusCode();
+        return id;
+    }
+
     private static Task<HttpResponseMessage> OverrideAsync(
         HttpClient client, Guid runId, Guid driverId, string reason) =>
         client.PostAsJsonAsync($"/api/v1/allocation-runs/{runId}/offers/override",
@@ -280,30 +330,32 @@ public sealed class DispatcherOverrideOfferTests
     private sealed class TestEnvironment : IAsyncDisposable
     {
         private TestEnvironment(PostgreSqlContainer database,
-            WebApplicationFactory<Program> application, HttpClient client)
-        { Database = database; Application = application; Client = client; }
+            WebApplicationFactory<Program> application, HttpClient client, MutableClock clock)
+        { Database = database; Application = application; Client = client; Clock = clock; }
         private PostgreSqlContainer Database { get; }
         public WebApplicationFactory<Program> Application { get; }
         public HttpClient Client { get; }
+        public MutableClock Clock { get; }
         public static async Task<TestEnvironment> CreateAsync(Action<IServiceCollection>? configure = null)
         {
             var database = new PostgreSqlBuilder("postgis/postgis:18-3.6")
                 .WithDatabase("ride_dispatch").WithUsername("ride_dispatch")
                 .WithPassword("ride_dispatch").Build();
             await database.StartAsync();
+            var clock = new MutableClock(Now);
             var application = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("ConnectionStrings:Database", database.GetConnectionString());
                 builder.ConfigureServices(services =>
                 {
                     services.RemoveAll<TimeProvider>();
-                    services.AddSingleton<TimeProvider>(new FixedClock(Now));
+                    services.AddSingleton<TimeProvider>(clock);
                     configure?.Invoke(services);
                 });
             });
             await using (var scope = application.Services.CreateAsyncScope())
                 await scope.ServiceProvider.GetRequiredService<DispatchDbContext>().Database.MigrateAsync();
-            return new(database, application, application.CreateClient());
+            return new(database, application, application.CreateClient(), clock);
         }
         public async ValueTask DisposeAsync()
         {
@@ -313,8 +365,11 @@ public sealed class DispatcherOverrideOfferTests
         }
     }
 
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
-    { public override DateTimeOffset GetUtcNow() => now; }
+    private sealed class MutableClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+        public void Set(DateTimeOffset value) => now = value;
+    }
 
     private sealed class RacingOfferStore(OfferStore inner, Barrier barrier) : IOfferStore
     {

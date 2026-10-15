@@ -121,6 +121,20 @@ public sealed class CreateAllocationRunTests
     }
 
     [Fact]
+    public async Task Activated_scheduled_ride_at_exact_pickup_creates_run()
+    {
+        var rideRequest = CreateScheduledRideRequest(CurrentTime);
+        rideRequest.ActivateDispatch(CurrentTime.AddMinutes(-1), TimeSpan.FromMinutes(15));
+        var store = new CapturingAllocationRunStore();
+
+        var result = await CreateUseCase(rideRequest, [], store).ExecuteAsync(
+            rideRequest.Id, DispatchRankingPolicy.Nearest, CancellationToken.None);
+
+        Assert.Equal(CreateAllocationRunOutcome.Success, result.Outcome);
+        Assert.Equal(1, store.SaveCallCount);
+    }
+
+    [Fact]
     public async Task Activated_scheduled_ride_after_pickup_is_rejected_without_creating_run()
     {
         var pickup = CurrentTime.AddMinutes(-1);

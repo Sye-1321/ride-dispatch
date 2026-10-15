@@ -22,7 +22,9 @@ public sealed class OffersController : ControllerBase
                 new { offerId = result.Offer!.Id },
                 OfferResponse.FromView(result.Offer)),
             CreateOfferOutcome.AllocationRunNotFound => NotFound(),
-            CreateOfferOutcome.NoRecommendedDriver or CreateOfferOutcome.OfferAlreadyExists => Conflict(),
+            CreateOfferOutcome.NoRecommendedDriver or
+                CreateOfferOutcome.OfferAlreadyExists or
+                CreateOfferOutcome.ScheduledPickupElapsed => Conflict(),
             _ => throw new InvalidOperationException("Unknown offer creation outcome."),
         };
     }
@@ -58,7 +60,8 @@ public sealed class OffersController : ControllerBase
             CreateDispatcherOverrideOfferOutcome.DriverNotEvaluated or
                 CreateDispatcherOverrideOfferOutcome.DriverNotEligible or
                 CreateDispatcherOverrideOfferOutcome.DriverAlreadyRecommended or
-                CreateDispatcherOverrideOfferOutcome.OfferAlreadyExists => Conflict(),
+                CreateDispatcherOverrideOfferOutcome.OfferAlreadyExists or
+                CreateDispatcherOverrideOfferOutcome.ScheduledPickupElapsed => Conflict(),
             _ => throw new InvalidOperationException("Unknown dispatcher override outcome."),
         };
     }
@@ -97,7 +100,8 @@ public sealed class OffersController : ControllerBase
             CreateReplacementDispatchOutcome.Success => Ok(
                 ReplacementDispatchResponse.FromResult(result)),
             CreateReplacementDispatchOutcome.OfferNotFound => NotFound(),
-            CreateReplacementDispatchOutcome.SourceOfferNotFailed => Conflict(),
+            CreateReplacementDispatchOutcome.SourceOfferNotFailed or
+                CreateReplacementDispatchOutcome.ScheduledPickupElapsed => Conflict(),
             _ => throw new InvalidOperationException("Unknown replacement dispatch outcome."),
         };
     }

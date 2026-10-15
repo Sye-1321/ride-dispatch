@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using RideDispatch.Application.Dispatch.AllocationRuns;
 using RideDispatch.Application.Dispatch.Offers;
 using RideDispatch.Domain.Dispatch;
 using RideDispatch.Infrastructure.Persistence;
@@ -265,6 +266,158 @@ public sealed class ReplacementDispatchTests
         Assert.Equal(1, await db.AllocationRuns.CountAsync(run => run.SourceOfferId == sourceOffer.Id));
     }
 
+    [Fact]
+    public async Task Scheduled_replacement_dispatch_after_pickup_returns_conflict_and_expires_pending_source()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var pickup = InitialTime.AddMinutes(10);
+        var rideId = await CreateScheduledRideAsync(environment.Client, pickup);
+        await CreateDriverAsync(environment.Client, "Cutoff Driver A", 9.031);
+        await CreateDriverAsync(environment.Client, "Cutoff Driver B", 9.04);
+        var runId = await CreateRunAsync(environment.Client, rideId);
+        var sourceOffer = await CreateOfferAsync(environment.Client, runId);
+
+        // Advance beyond pickup time (also past offer expiry)
+        environment.Clock.Set(pickup.AddMinutes(1));
+
+        using var response = await environment.Client.PostAsync(
+            $"/api/v1/offers/{sourceOffer.Id}/replacement-dispatch", null);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+        // Source offer must still be recorded as expired
+        await using var scope = environment.Application.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<DispatchDbContext>();
+        var persistedOffer = await db.Offers.SingleAsync(o => o.Id == sourceOffer.Id);
+        Assert.Equal(OfferStatus.Expired, persistedOffer.Status);
+        Assert.Equal(pickup.AddMinutes(1), persistedOffer.ResolvedAt);
+
+        // No replacement allocation run was created
+        Assert.False(await db.AllocationRuns.AnyAsync(r => r.SourceOfferId == sourceOffer.Id));
+    }
+
+    [Fact]
+    public async Task Scheduled_replacement_dispatch_at_exact_pickup_succeeds()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var pickup = InitialTime.AddMinutes(10);
+        var rideId = await CreateScheduledRideAsync(environment.Client, pickup);
+        await CreateDriverAsync(environment.Client, "Boundary Driver A", 9.031);
+        var driverB = await CreateDriverAsync(environment.Client, "Boundary Driver B", 9.04);
+        var runId = await CreateRunAsync(environment.Client, rideId);
+        var sourceOffer = await CreateOfferAsync(environment.Client, runId);
+        using (var decline = await environment.Client.PostAsync($"/api/v1/offers/{sourceOffer.Id}/decline", null))
+            decline.EnsureSuccessStatusCode();
+
+        environment.Clock.Set(pickup);
+        using (var refreshLoc = await environment.Client.PutAsJsonAsync(
+            $"/api/v1/drivers/{driverB}/location", new { latitude = 9.04, longitude = 38.74 }))
+            refreshLoc.EnsureSuccessStatusCode();
+
+        var replacement = await ReplaceAsync(environment.Client, sourceOffer.Id);
+        Assert.Equal(driverB, replacement.Run.GetProperty("recommendedDriverId").GetGuid());
+        Assert.Equal(driverB, replacement.Offer!.Value.GetProperty("driverId").GetGuid());
+
+        await using var scope = environment.Application.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<DispatchDbContext>();
+        Assert.Equal(1, await db.AllocationRuns.CountAsync(r => r.SourceOfferId == sourceOffer.Id));
+    }
+
+    [Fact]
+    public async Task Scheduled_previously_created_replacement_is_idempotently_retrieved_after_pickup()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var pickup = InitialTime.AddMinutes(10);
+        var rideId = await CreateScheduledRideAsync(environment.Client, pickup);
+        await CreateDriverAsync(environment.Client, "Retry Driver A", 9.031);
+        var driverB = await CreateDriverAsync(environment.Client, "Retry Driver B", 9.04);
+        var runId = await CreateRunAsync(environment.Client, rideId);
+        var sourceOffer = await CreateOfferAsync(environment.Client, runId);
+        using (var decline = await environment.Client.PostAsync($"/api/v1/offers/{sourceOffer.Id}/decline", null))
+            decline.EnsureSuccessStatusCode();
+
+        // Create replacement before pickup
+        environment.Clock.Advance(TimeSpan.FromMinutes(1));
+        var first = await ReplaceAsync(environment.Client, sourceOffer.Id);
+        Assert.Equal(driverB, first.Offer!.Value.GetProperty("driverId").GetGuid());
+
+        // Now advance clock past pickup
+        environment.Clock.Set(pickup.AddMinutes(5));
+
+        // Retrying replacement dispatch must succeed and idempotently return the existing replacement
+        var retry = await ReplaceAsync(environment.Client, sourceOffer.Id);
+        Assert.Equal(first.Run.GetProperty("id").GetGuid(), retry.Run.GetProperty("id").GetGuid());
+        Assert.Equal(first.Offer.Value.GetProperty("id").GetGuid(), retry.Offer!.Value.GetProperty("id").GetGuid());
+
+        await using var scope = environment.Application.Services.CreateAsyncScope();
+        var count = await scope.ServiceProvider.GetRequiredService<DispatchDbContext>().AllocationRuns
+            .CountAsync(run => run.SourceOfferId == sourceOffer.Id);
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task Scheduled_replacement_when_clock_advances_past_pickup_between_run_persistence_and_offer_creation_persists_offer()
+    {
+        MutableClock? clockRef = null;
+        await using var environment = await TestEnvironment.CreateAsync(services =>
+        {
+            services.RemoveAll<IAllocationRunStore>();
+            services.AddScoped<IAllocationRunStore>(provider => new AdvancingAllocationRunStore(
+                new AllocationRunStore(provider.GetRequiredService<DispatchDbContext>()),
+                clockRef!,
+                TimeSpan.FromMinutes(5)));
+        });
+        clockRef = environment.Clock;
+
+        var pickup = InitialTime.AddMinutes(10);
+        var rideId = await CreateScheduledRideAsync(environment.Client, pickup);
+        await CreateDriverAsync(environment.Client, "Adv Driver A", 9.031);
+        var driverB = await CreateDriverAsync(environment.Client, "Adv Driver B", 9.04);
+        var runId = await CreateRunAsync(environment.Client, rideId);
+        var sourceOffer = await CreateOfferAsync(environment.Client, runId);
+        using (var decline = await environment.Client.PostAsync($"/api/v1/offers/{sourceOffer.Id}/decline", null))
+            decline.EnsureSuccessStatusCode();
+
+        environment.Clock.Set(pickup);
+        using (var refreshLoc = await environment.Client.PutAsJsonAsync(
+            $"/api/v1/drivers/{driverB}/location", new { latitude = 9.04, longitude = 38.74 }))
+            refreshLoc.EnsureSuccessStatusCode();
+
+        var replacement = await ReplaceAsync(environment.Client, sourceOffer.Id);
+        Assert.Equal(driverB, replacement.Run.GetProperty("recommendedDriverId").GetGuid());
+        Assert.NotNull(replacement.Offer);
+        Assert.Equal(driverB, replacement.Offer!.Value.GetProperty("driverId").GetGuid());
+
+        await using var scope = environment.Application.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<DispatchDbContext>();
+        var replacementRun = await db.AllocationRuns.SingleAsync(r => r.SourceOfferId == sourceOffer.Id);
+        var persistedOffer = await db.Offers.SingleAsync(o => o.AllocationRunId == replacementRun.Id);
+        Assert.Equal(driverB, persistedOffer.DriverId);
+        Assert.Equal(OfferStatus.Pending, persistedOffer.Status);
+    }
+
+    private static async Task<Guid> CreateScheduledRideAsync(HttpClient client, DateTimeOffset pickupAt)
+    {
+        using var response = await client.PostAsJsonAsync("/api/v1/ride-requests", new
+        {
+            contactName = "Scheduled Replacement Passenger",
+            contactPhone = "+251911000099",
+            bookingSource = "CALL_CENTER",
+            timing = "SCHEDULED",
+            pickupLatitude = 9.03,
+            pickupLongitude = 38.74,
+            destinationLatitude = 9.01,
+            destinationLongitude = 38.78,
+            requiredVehicleType = "STANDARD",
+            requestedPickupAt = pickupAt,
+            estimatedTripDurationSeconds = 1200,
+        });
+        response.EnsureSuccessStatusCode();
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        using var activate = await client.PostAsync($"/api/v1/ride-requests/{id}/activate-dispatch", null);
+        activate.EnsureSuccessStatusCode();
+        return id;
+    }
+
     private static async Task<(JsonElement Run, JsonElement? Offer)> ReplaceAsync(HttpClient client, Guid offerId)
     {
         using var response = await client.PostAsync($"/api/v1/offers/{offerId}/replacement-dispatch", null);
@@ -355,7 +508,7 @@ public sealed class ReplacementDispatchTests
         public WebApplicationFactory<Program> Application { get; }
         public HttpClient Client { get; }
         public MutableClock Clock { get; }
-        public static async Task<TestEnvironment> CreateAsync()
+        public static async Task<TestEnvironment> CreateAsync(Action<IServiceCollection>? configure = null)
         {
             var database = new PostgreSqlBuilder("postgis/postgis:18-3.6")
                 .WithDatabase("ride_dispatch").WithUsername("ride_dispatch").WithPassword("ride_dispatch").Build();
@@ -368,6 +521,7 @@ public sealed class ReplacementDispatchTests
                 {
                     services.RemoveAll<TimeProvider>();
                     services.AddSingleton<TimeProvider>(clock);
+                    configure?.Invoke(services);
                 });
             });
             await using (var scope = application.Services.CreateAsyncScope())
@@ -379,6 +533,19 @@ public sealed class ReplacementDispatchTests
             Client.Dispose();
             await Application.DisposeAsync();
             await Database.DisposeAsync();
+        }
+    }
+
+    private sealed class AdvancingAllocationRunStore(IAllocationRunStore inner, MutableClock clock, TimeSpan advanceBy) : IAllocationRunStore
+    {
+        public Task AddAsync(AllocationRun allocationRun, CancellationToken cancellationToken) => inner.AddAsync(allocationRun, cancellationToken);
+        public Task<AllocationRun?> FindByIdAsync(Guid id, CancellationToken cancellationToken) => inner.FindByIdAsync(id, cancellationToken);
+        public Task<AllocationRun?> FindBySourceOfferIdAsync(Guid id, CancellationToken cancellationToken) => inner.FindBySourceOfferIdAsync(id, cancellationToken);
+        public Task<IReadOnlyList<AllocationCandidateEvaluation>?> FindCandidateEvaluationsAsync(Guid id, CancellationToken ct) => inner.FindCandidateEvaluationsAsync(id, ct);
+        public async Task SaveChangesAsync(CancellationToken cancellationToken)
+        {
+            await inner.SaveChangesAsync(cancellationToken);
+            clock.Advance(advanceBy);
         }
     }
 

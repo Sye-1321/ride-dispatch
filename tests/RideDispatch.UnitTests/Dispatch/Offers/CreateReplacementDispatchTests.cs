@@ -175,35 +175,145 @@ public sealed class CreateReplacementDispatchTests
         Assert.Equal(1, fixture.Runs.AddCount);
     }
 
+    [Fact]
+    public async Task Scheduled_replacement_after_pickup_is_rejected_without_creating_replacement_run()
+    {
+        var pickup = Now.AddMinutes(-5);
+        var fixture = Fixture.WithScheduledSource(pickup, Now, OfferStatus.Declined);
+        var result = await fixture.UseCase.ExecuteAsync(fixture.SourceOffer!.Id, CancellationToken.None);
+
+        Assert.Equal(CreateReplacementDispatchOutcome.ScheduledPickupElapsed, result.Outcome);
+        Assert.Null(result.AllocationRun);
+        Assert.Null(result.Offer);
+        Assert.Equal(0, fixture.Runs.AddCount);
+    }
+
+    [Fact]
+    public async Task Pending_source_after_pickup_is_expired_in_store_even_when_replacement_is_rejected()
+    {
+        var pickup = Now.AddMinutes(-1);
+        var fixture = Fixture.WithScheduledSource(
+            pickup, Now, OfferStatus.Pending, offerCreatedAt: Now.AddMinutes(-2));
+        var result = await fixture.UseCase.ExecuteAsync(fixture.SourceOffer!.Id, CancellationToken.None);
+
+        Assert.Equal(CreateReplacementDispatchOutcome.ScheduledPickupElapsed, result.Outcome);
+        Assert.Equal(OfferStatus.Expired, fixture.SourceOffer.Status);
+        Assert.Equal(Now, fixture.SourceOffer.ResolvedAt);
+        Assert.Equal(1, fixture.Offers.SaveCount);
+        Assert.Equal(0, fixture.Runs.AddCount);
+    }
+
+    [Fact]
+    public async Task Scheduled_replacement_at_exact_pickup_creates_replacement()
+    {
+        var fixture = Fixture.WithScheduledSource(Now, Now, OfferStatus.Declined, recommendedDriver: true);
+        var result = await fixture.UseCase.ExecuteAsync(fixture.SourceOffer!.Id, CancellationToken.None);
+
+        Assert.Equal(CreateReplacementDispatchOutcome.Success, result.Outcome);
+        Assert.NotNull(result.AllocationRun);
+        Assert.Equal(1, fixture.Runs.AddCount);
+    }
+
+    [Fact]
+    public async Task Existing_replacement_for_scheduled_ride_is_idempotently_retrieved_after_pickup()
+    {
+        var pickup = Now.AddMinutes(-10);
+        var fixture = Fixture.WithScheduledSource(pickup, Now, OfferStatus.Declined, recommendedDriver: true);
+        var existingRun = AllocationRun.CreateReplacement(
+            fixture.SourceRun!.RideRequestId,
+            fixture.SourceRun.RankingPolicy,
+            fixture.DriverId,
+            fixture.SourceOffer!.Id,
+            pickup.AddMinutes(-5));
+        var existingOffer = Offer.Create(existingRun.Id, fixture.DriverId, TimeSpan.FromMinutes(1), pickup.AddMinutes(-5));
+        fixture.Runs.ExistingReplacement = existingRun;
+        fixture.Offers.ExistingByRun = existingOffer;
+
+        var result = await fixture.UseCase.ExecuteAsync(fixture.SourceOffer.Id, CancellationToken.None);
+
+        Assert.Equal(CreateReplacementDispatchOutcome.Success, result.Outcome);
+        Assert.Equal(existingRun.Id, result.AllocationRun!.Id);
+        Assert.Equal(existingOffer.Id, result.Offer!.Id);
+        Assert.Equal(0, fixture.Runs.AddCount);
+        Assert.Equal(0, fixture.Offers.AddCount);
+    }
+
+    [Fact]
+    public async Task Scheduled_replacement_when_clock_advances_past_pickup_between_run_persistence_and_offer_creation_persists_offer()
+    {
+        var pickup = Now;
+        var fixture = Fixture.WithScheduledSource(pickup, Now, OfferStatus.Declined, recommendedDriver: true);
+        fixture.Runs.OnSaved = () =>
+        {
+            fixture.SourceClock.Advance(TimeSpan.FromMinutes(5));
+            fixture.DownstreamClock.Advance(TimeSpan.FromMinutes(5));
+        };
+
+        var result = await fixture.UseCase.ExecuteAsync(fixture.SourceOffer!.Id, CancellationToken.None);
+
+        Assert.Equal(CreateReplacementDispatchOutcome.Success, result.Outcome);
+        Assert.NotNull(result.AllocationRun);
+        Assert.NotNull(result.Offer);
+        Assert.Equal(fixture.DriverId, result.Offer.DriverId);
+        Assert.Equal(1, fixture.Runs.AddCount);
+        Assert.Equal(1, fixture.Offers.AddCount);
+    }
+
+    [Fact]
+    public async Task Existing_scheduled_replacement_run_without_offer_after_pickup_is_rejected_without_persisting_offer()
+    {
+        var pickup = Now.AddMinutes(-5);
+        var fixture = Fixture.WithScheduledSource(pickup, Now, OfferStatus.Declined, recommendedDriver: true);
+        var existingRun = AllocationRun.CreateReplacement(
+            fixture.SourceRun!.RideRequestId,
+            fixture.SourceRun.RankingPolicy,
+            fixture.DriverId,
+            fixture.SourceOffer!.Id,
+            pickup.AddMinutes(-10));
+        fixture.Runs.ExistingReplacement = existingRun;
+
+        var result = await fixture.UseCase.ExecuteAsync(fixture.SourceOffer.Id, CancellationToken.None);
+
+        Assert.Equal(CreateReplacementDispatchOutcome.ScheduledPickupElapsed, result.Outcome);
+        Assert.Null(result.Offer);
+        Assert.Equal(0, fixture.Offers.AddCount);
+        Assert.Equal(0, fixture.Offers.SaveCount);
+    }
+
     private sealed class Fixture
     {
         private Fixture(
             RideRequest? rideRequest,
             Offer? sourceOffer,
             AllocationRun? sourceRun,
-            bool recommendedDriver)
+            bool recommendedDriver,
+            DateTimeOffset? initialTime = null)
         {
+            var time = initialTime ?? Now;
             SourceOffer = sourceOffer;
             SourceRun = sourceRun;
             DriverId = Guid.NewGuid();
-            SourceClock = new CountingClock(Now);
-            DownstreamClock = new CountingClock(Now);
+            SourceClock = new CountingClock(time);
+            DownstreamClock = new CountingClock(time);
             Offers = new OfferStoreStub(sourceOffer);
             Runs = new RunStoreStub(sourceRun);
+            var rideStore = new RideStoreStub(rideRequest);
             var evaluator = new EvaluateDispatchCandidates(
-                new RideStoreStub(rideRequest),
+                rideStore,
                 new CandidateStoreStub(recommendedDriver ? DriverId : null),
                 new DispatchEligibilityPolicy(50_000, TimeSpan.FromMinutes(1), 0.01m),
                 DownstreamClock);
             var creator = new AllocationRunCreator(evaluator, Runs, DownstreamClock);
             var createOffer = new CreateOffer(
                 Runs,
+                rideStore,
                 Offers,
                 new OfferPolicy(TimeSpan.FromMinutes(1)),
                 DownstreamClock);
             UseCase = new CreateReplacementDispatch(
                 Offers,
                 Runs,
+                rideStore,
                 creator,
                 createOffer,
                 SourceClock);
@@ -243,6 +353,41 @@ public sealed class CreateReplacementDispatchTests
             return new(rideRequest, offer, run, recommendedDriver);
         }
 
+        public static Fixture WithScheduledSource(
+            DateTimeOffset pickupAt,
+            DateTimeOffset currentTime,
+            OfferStatus status,
+            bool recommendedDriver = false,
+            DateTimeOffset? offerCreatedAt = null)
+        {
+            var rideRequest = RideRequest.Create(
+                null, "Scheduled Passenger", "+251911000000", BookingSource.CallCenter,
+                RideTiming.Scheduled, 9.03, 38.74, 9.01, 38.78,
+                RideDispatch.Domain.Vehicles.VehicleType.Standard, pickupAt, 1200, pickupAt.AddMinutes(-30));
+            rideRequest.ActivateDispatch(pickupAt.AddMinutes(-20), TimeSpan.FromMinutes(30));
+
+            var run = AllocationRun.Create(
+                rideRequest.Id,
+                DispatchRankingPolicy.Nearest,
+                Guid.NewGuid(),
+                currentTime.AddMinutes(-2));
+            var offer = Offer.Create(
+                run.Id,
+                run.RecommendedDriverId!.Value,
+                TimeSpan.FromSeconds(30),
+                offerCreatedAt ?? currentTime.AddMinutes(-2));
+
+            if (status != OfferStatus.Pending)
+            {
+                if (status == OfferStatus.Expired) offer.Expire(offer.ExpiresAt);
+                else if (status == OfferStatus.Declined) offer.Decline(offer.CreatedAt.AddSeconds(1));
+                else if (status == OfferStatus.Accepted) offer.Accept(offer.CreatedAt.AddSeconds(1));
+                else offer.Withdraw(offer.CreatedAt.AddSeconds(1));
+            }
+
+            return new(rideRequest, offer, run, recommendedDriver, currentTime);
+        }
+
         private static RideRequest CreateRide() =>
             RideRequest.Create(null, "Passenger", "+251911000000", BookingSource.CallCenter,
                 RideTiming.Immediate, 9.03, 38.74, 9.01, 38.78,
@@ -253,10 +398,13 @@ public sealed class CreateReplacementDispatchTests
     {
         public int ReadCount { get; private set; }
         public override DateTimeOffset GetUtcNow() { ReadCount++; return now; }
+        public void Advance(TimeSpan duration) => now += duration;
+        public void Set(DateTimeOffset value) => now = value;
     }
 
     private sealed class RunStoreStub(AllocationRun? source) : IAllocationRunStore
     {
+        public Action? OnSaved { get; set; }
         public AllocationRun? ExistingReplacement { get; set; }
         public AllocationRun? WinnerOnSaveRace { get; set; }
         public int AddCount { get; private set; }
@@ -267,6 +415,7 @@ public sealed class CreateReplacementDispatchTests
         public Task SaveChangesAsync(CancellationToken ct)
         {
             if (WinnerOnSaveRace is not null) { ExistingReplacement = WinnerOnSaveRace; WinnerOnSaveRace = null; throw new ReplacementAllocationRunAlreadyExistsException(new Exception()); }
+            OnSaved?.Invoke();
             return Task.CompletedTask;
         }
     }

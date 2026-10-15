@@ -204,6 +204,33 @@ public sealed class OfferTests
         Assert.Equal("EXPIRED", persisted.GetProperty("status").GetString());
     }
 
+    [Fact]
+    public async Task Scheduled_offer_creation_after_pickup_returns_conflict_and_at_exact_pickup_succeeds()
+    {
+        await using var environment = await TestEnvironment.CreateAsync();
+        var client = environment.Client;
+        var pickup = InitialTime.AddMinutes(10);
+        var rideId = await CreateRideAsync(client, pickup);
+        await CreateEligibleDriverAsync(client);
+        var runId = await CreateRunAsync(client, rideId);
+
+        // At exact pickup time: offer creation succeeds
+        environment.Clock.Set(pickup);
+        using var exactResponse = await client.PostAsync($"/api/v1/allocation-runs/{runId}/offers", null);
+        Assert.Equal(HttpStatusCode.Created, exactResponse.StatusCode);
+
+        // For another scheduled ride whose pickup has passed: offer creation returns Conflict
+        var secondPickup = InitialTime.AddMinutes(10);
+        environment.Clock.Set(InitialTime);
+        var secondRideId = await CreateRideAsync(client, secondPickup);
+        var secondRunId = await CreateRunAsync(client, secondRideId);
+
+        // Advance beyond pickup time
+        environment.Clock.Set(secondPickup.AddSeconds(1));
+        using var elapsedResponse = await client.PostAsync($"/api/v1/allocation-runs/{secondRunId}/offers", null);
+        Assert.Equal(HttpStatusCode.Conflict, elapsedResponse.StatusCode);
+    }
+
     private static async Task<Guid> CreateRideAsync(HttpClient client, DateTimeOffset? requestedPickupAt = null)
     {
         using var response = await client.PostAsJsonAsync("/api/v1/ride-requests", new

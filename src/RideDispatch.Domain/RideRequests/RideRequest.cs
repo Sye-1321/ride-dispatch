@@ -109,6 +109,9 @@ public sealed class RideRequest
         DispatchActivatedAt = activatedAt;
     }
 
+    public bool HasScheduledPickupElapsed(DateTimeOffset currentUtcTime) =>
+        Timing == RideTiming.Scheduled && currentUtcTime > RequestedPickupAt;
+
     public static RideRequest Create(
         Guid? passengerId,
         string contactName,

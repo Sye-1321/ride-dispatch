@@ -1,5 +1,7 @@
 using RideDispatch.Application.Dispatch.AllocationRuns;
+using RideDispatch.Application.RideRequests;
 using RideDispatch.Domain.Dispatch;
+using RideDispatch.Domain.RideRequests;
 
 namespace RideDispatch.Application.Dispatch.Offers;
 
@@ -8,6 +10,7 @@ public enum CreateReplacementDispatchOutcome
     Success,
     OfferNotFound,
     SourceOfferNotFailed,
+    ScheduledPickupElapsed,
 }
 
 public sealed record CreateReplacementDispatchResult(
@@ -19,6 +22,7 @@ public sealed record CreateReplacementDispatchResult(
 public sealed class CreateReplacementDispatch(
     IOfferStore offerStore,
     IAllocationRunStore allocationRunStore,
+    IRideRequestStore rideRequestStore,
     AllocationRunCreator allocationRunCreator,
     CreateOffer createOffer,
     TimeProvider timeProvider)
@@ -33,6 +37,7 @@ public sealed class CreateReplacementDispatch(
             return new(CreateReplacementDispatchOutcome.OfferNotFound, sourceOfferId);
         }
 
+        DateTimeOffset? decisionTime = null;
         if (sourceOffer.Status == OfferStatus.Pending)
         {
             var now = timeProvider.GetUtcNow();
@@ -60,6 +65,8 @@ public sealed class CreateReplacementDispatch(
                     return new(CreateReplacementDispatchOutcome.SourceOfferNotFailed, sourceOfferId);
                 }
             }
+
+            decisionTime = now;
         }
         else if (sourceOffer.Status is not (OfferStatus.Declined or OfferStatus.Expired))
         {
@@ -76,6 +83,21 @@ public sealed class CreateReplacementDispatch(
             cancellationToken);
         if (replacementRun is null)
         {
+            var rideRequest = await rideRequestStore.FindByIdAsync(
+                sourceRun.RideRequestId,
+                cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "The source allocation run references a missing ride request.");
+
+            if (rideRequest.Timing == RideTiming.Scheduled)
+            {
+                decisionTime ??= timeProvider.GetUtcNow();
+                if (rideRequest.HasScheduledPickupElapsed(decisionTime.Value))
+                {
+                    return new(CreateReplacementDispatchOutcome.ScheduledPickupElapsed, sourceOfferId);
+                }
+            }
+
             try
             {
                 replacementRun = await allocationRunCreator.CreateAsync(
@@ -106,7 +128,10 @@ public sealed class CreateReplacementDispatch(
             cancellationToken);
         if (replacementOffer is null)
         {
-            var createResult = await createOffer.ExecuteAsync(replacementRun.Id, cancellationToken);
+            var createResult = await createOffer.ExecuteAsync(
+                replacementRun.Id,
+                decisionTime,
+                cancellationToken);
             if (createResult.Outcome == CreateOfferOutcome.Success)
             {
                 return new(
@@ -114,6 +139,11 @@ public sealed class CreateReplacementDispatch(
                     sourceOfferId,
                     AllocationRunView.FromAllocationRun(replacementRun),
                     createResult.Offer);
+            }
+
+            if (createResult.Outcome == CreateOfferOutcome.ScheduledPickupElapsed)
+            {
+                return new(CreateReplacementDispatchOutcome.ScheduledPickupElapsed, sourceOfferId);
             }
 
             if (createResult.Outcome != CreateOfferOutcome.OfferAlreadyExists)

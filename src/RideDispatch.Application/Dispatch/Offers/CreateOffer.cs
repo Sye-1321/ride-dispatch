@@ -1,5 +1,7 @@
 using RideDispatch.Application.Dispatch.AllocationRuns;
+using RideDispatch.Application.RideRequests;
 using RideDispatch.Domain.Dispatch;
+using RideDispatch.Domain.RideRequests;
 
 namespace RideDispatch.Application.Dispatch.Offers;
 
@@ -9,17 +11,27 @@ public enum CreateOfferOutcome
     AllocationRunNotFound,
     NoRecommendedDriver,
     OfferAlreadyExists,
+    ScheduledPickupElapsed,
 }
 
 public sealed record CreateOfferResult(CreateOfferOutcome Outcome, OfferView? Offer = null);
 
 public sealed class CreateOffer(
     IAllocationRunStore allocationRunStore,
+    IRideRequestStore rideRequestStore,
     IOfferStore offerStore,
     OfferPolicy policy,
     TimeProvider timeProvider)
 {
-    public async Task<CreateOfferResult> ExecuteAsync(Guid allocationRunId, CancellationToken cancellationToken)
+    public Task<CreateOfferResult> ExecuteAsync(
+        Guid allocationRunId,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(allocationRunId, null, cancellationToken);
+
+    public async Task<CreateOfferResult> ExecuteAsync(
+        Guid allocationRunId,
+        DateTimeOffset? capturedAt,
+        CancellationToken cancellationToken)
     {
         var allocationRun = await allocationRunStore.FindByIdAsync(allocationRunId, cancellationToken);
         if (allocationRun is null)
@@ -37,11 +49,22 @@ public sealed class CreateOffer(
             return new(CreateOfferOutcome.OfferAlreadyExists);
         }
 
+        var rideRequest = await rideRequestStore.FindByIdAsync(allocationRun.RideRequestId, cancellationToken)
+            ?? throw new InvalidOperationException("An allocation run references a missing ride request.");
+
+        var now = capturedAt ?? timeProvider.GetUtcNow();
+
+        if (rideRequest.Timing == RideTiming.Scheduled &&
+            rideRequest.HasScheduledPickupElapsed(now))
+        {
+            return new(CreateOfferOutcome.ScheduledPickupElapsed);
+        }
+
         var offer = Offer.Create(
             allocationRunId,
             allocationRun.RecommendedDriverId.Value,
             policy.Ttl,
-            timeProvider.GetUtcNow());
+            now);
         await offerStore.AddAsync(offer, cancellationToken);
         try
         {
