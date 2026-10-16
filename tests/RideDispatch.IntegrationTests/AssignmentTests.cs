@@ -114,7 +114,7 @@ public sealed class AssignmentTests
     }
 
     [Fact]
-    public async Task Cancellation_releases_ride_and_driver_for_new_assignment()
+    public async Task Cancellation_releases_driver_but_accepted_offer_keeps_ride_reserved()
     {
         await using var environment = await TestEnvironment.CreateAsync();
         var driverId = await CreateEligibleDriverAsync(environment.Client, "Cancellation Driver");
@@ -135,9 +135,17 @@ public sealed class AssignmentTests
         Assert.Equal(firstAssignment.GetProperty("endsAt").GetDateTimeOffset(), cancelled.GetProperty("endsAt").GetDateTimeOffset());
 
         var secondRun = await CreateRunAsync(environment.Client, rideId, driverId);
-        var secondOffer = await CreateAndAcceptOfferAsync(environment.Client, secondRun);
-        var secondAssignment = await CreateAssignmentAsync(environment.Client, secondOffer);
+        using (var blockedOffer = await environment.Client.PostAsync(
+            $"/api/v1/allocation-runs/{secondRun}/offers", null))
+            Assert.Equal(HttpStatusCode.Conflict, blockedOffer.StatusCode);
+
+        var otherRide = await CreateRideAsync(environment.Client, "Post-cancellation Ride", "IMMEDIATE", null);
+        var otherRun = await CreateRunAsync(environment.Client, otherRide, driverId);
+        var otherOffer = await CreateAndAcceptOfferAsync(environment.Client, otherRun);
+        var secondAssignment = await CreateAssignmentAsync(environment.Client, otherOffer);
         Assert.NotEqual(firstAssignment.GetProperty("id").GetGuid(), secondAssignment.GetProperty("id").GetGuid());
+        Assert.Equal(otherRide, secondAssignment.GetProperty("rideRequestId").GetGuid());
+        Assert.Equal(driverId, secondAssignment.GetProperty("driverId").GetGuid());
         using var oldAssignment = await environment.Client.GetAsync(
             $"/api/v1/assignments/{firstAssignment.GetProperty("id").GetGuid()}");
         oldAssignment.EnsureSuccessStatusCode();
@@ -173,9 +181,9 @@ public sealed class AssignmentTests
 
         var driverB = await CreateEligibleDriverAsync(environment.Client, "Completion B");
         var rerun = await CreateRunAsync(environment.Client, originalRide, driverB);
-        var reoffer = await CreateAndAcceptOfferAsync(environment.Client, rerun);
-        using var duplicate = await environment.Client.PostAsync($"/api/v1/offers/{reoffer}/assignments", null);
-        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        using var blockedOffer = await environment.Client.PostAsync(
+            $"/api/v1/allocation-runs/{rerun}/offers", null);
+        Assert.Equal(HttpStatusCode.Conflict, blockedOffer.StatusCode);
         await using var scope = environment.Application.Services.CreateAsyncScope();
         Assert.Equal(1, await scope.ServiceProvider.GetRequiredService<DispatchDbContext>().Assignments
             .CountAsync(x => x.RideRequestId == originalRide && x.Status != AssignmentStatus.Cancelled));
