@@ -74,7 +74,9 @@ This evidence represents the dispatch decision at that point in time. Reading it
 
 ### Recommended offers
 
-An allocation run can have at most one offer. The offer TTL is configurable, and each offer stores its creation and expiry timestamps. Offer status is one of `PENDING`, `ACCEPTED`, `DECLINED`, `EXPIRED`, or `WITHDRAWN`. Expiry is evaluated against the persisted expiry timestamp when relevant offer workflows execute.
+An allocation run can have at most one offer. Across all allocation runs for a ride, at most one offer can be actionable: `PENDING` offers that have not expired and all `ACCEPTED` offers block another offer, while `DECLINED`, `WITHDRAWN`, and `EXPIRED` offers do not. When a pending offer's TTL has elapsed, offer creation and other relevant offer workflows persist it as expired before continuing. The offer TTL is configurable, and each offer stores its creation and expiry timestamps.
+
+Offer status is protected by optimistic concurrency. Competing transitions cannot overwrite each other; a losing request reloads and returns the authoritative persisted state. An accepted offer remains blocking even if its assignment is later cancelled or completed.
 
 ### Dispatcher override
 
@@ -98,6 +100,8 @@ Ride timing is either `IMMEDIATE` or `SCHEDULED`. An immediate ride has no reque
 
 Scheduled dispatch must be activated explicitly before an allocation run can be created. Activation is persisted and is allowed from the requested pickup time minus the configured lead time through the pickup timestamp. The default lead time is 15 minutes. Concurrent activation attempts are retry-safe and return the persisted activation when another request wins the race.
 
+New scheduled allocation runs and offers are rejected after the pickup timestamp. Replacement dispatch cannot initiate a new replacement after this cutoff, but previously created replacements remain retrievable, and operations admitted before the cutoff may finish. The pickup timestamp itself remains an allowed boundary.
+
 The eligible-driver preview remains available independently of activation. It evaluates candidates for the scheduled ride's occupancy window without creating an allocation run.
 
 ## Assignments and schedule protection
@@ -108,7 +112,7 @@ Assignments can be created only from accepted offers. Their occupancy window is 
 - scheduled rides start at the requested pickup time; and
 - the ride's estimated trip duration determines the end time.
 
-An `ACTIVE` assignment reserves the driver's schedule. A `COMPLETED` assignment retains the completed ride but no longer reserves the schedule. A `CANCELLED` assignment releases both the driver reservation and the ride for a later non-cancelled assignment.
+An `ACTIVE` assignment reserves the driver's schedule. A `COMPLETED` assignment retains the completed ride but no longer reserves the driver's schedule. A `CANCELLED` assignment releases its persisted driver and ride reservation, allowing the driver to serve another ride. Cancellation does not override the accepted-offer policy: the accepted offer still blocks another offer for its ride.
 
 PostgreSQL protects active driver schedules with an exclusion constraint over overlapping `tstzrange` values. Application prechecks provide an early conflict response, while the database constraint handles concurrent writes. The database also enforces one assignment per offer and at most one non-cancelled assignment per ride.
 
@@ -120,13 +124,14 @@ EF Core mappings and PostgreSQL constraints enforce the central persistence rule
 - an exclusion constraint prevents overlapping active assignment windows for a driver;
 - each driver can have at most one vehicle;
 - each allocation run can have at most one offer;
+- each ride can have at most one `PENDING` or `ACCEPTED` offer across allocation runs;
 - each offer can have at most one assignment;
 - each ride can have at most one non-cancelled assignment;
 - each source offer can have at most one replacement allocation run;
 - eligible candidate evaluations require a positive rank, while rejected candidates cannot have one;
 - offer status, resolution timestamps, selection mode, and override reasons must remain consistent;
 - scheduled pickup and activation timestamps must match the ride timing rules; and
-- assignment status and scheduled activation fields act as concurrency tokens for their respective updates.
+- offer status, assignment status, scheduled activation, driver approval, and driver operational status act as concurrency tokens for their respective updates. Driver status updates retry once after a concurrent write and otherwise return a conflict.
 
 ## Architecture
 
@@ -253,7 +258,7 @@ Health endpoints are available independently of the OpenAPI document:
 
 The repository contains focused unit tests and PostgreSQL/PostGIS integration tests. Integration tests use Testcontainers to start real database instances. The CI workflow builds the solution and runs the two suites separately.
 
-The currently verified suite contains 244 unit tests and 39 integration tests, for 283 tests in total.
+The currently verified suite contains 287 unit tests and 59 PostgreSQL integration tests, for 346 tests in total.
 
 ```bash
 dotnet test tests/RideDispatch.UnitTests/RideDispatch.UnitTests.csproj
@@ -264,4 +269,4 @@ dotnet test tests/RideDispatch.IntegrationTests/RideDispatch.IntegrationTests.cs
 
 This service focuses on dispatch and allocation correctness rather than the full ride lifecycle. Authentication and authorization, routing and ETA calculation, and live driver transport or streaming are not implemented here.
 
-There is no background offer-expiry worker. Expiry is evaluated when an offer transition or replacement-dispatch workflow needs the current offer state. The service uses direct application orchestration and database constraints; it does not introduce an event bus or separate services for the current consistency boundaries.
+There is no background offer-expiry worker. Expiry is evaluated when offer creation, an offer transition, or replacement dispatch needs the current offer state. The service uses direct application orchestration and database constraints; it does not introduce an event bus or separate services for the current consistency boundaries.
