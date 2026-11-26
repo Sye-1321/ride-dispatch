@@ -6,9 +6,9 @@ Ride Dispatch is an ASP.NET Core service for deciding which eligible driver shou
 
 ## Overview
 
-The service manages a ride-to-driver dispatch lifecycle. Candidate discovery is eligibility-first: drivers are selected within a geographic radius, evaluated against operational and business rules, and only then ranked. An allocation run persists the recommendation and the candidate evidence used to produce it, making the decision inspectable later.
+Drivers are discovered using PostGIS, evaluated against eligibility rules, and ranked by distance or time spent available. Allocation runs record recommendations, candidate ranks, and rejection reasons.
 
-The lifecycle continues through time-limited offers and accepted-offer assignments. It also supports dispatcher selection of a different eligible candidate, replacement dispatch after a declined or expired offer, and explicit activation of scheduled rides.
+The service supports time-limited offers, dispatcher overrides, replacement dispatch, scheduled rides, and driver assignments.
 
 ## Dispatch model
 
@@ -23,8 +23,6 @@ flowchart TD
     Offer -->|Declined or expired| Replacement[Replacement dispatch]
     Replacement --> Discovery
 ```
-
-The eligible-driver endpoint performs the discovery, evaluation, and ranking stages without persisting an allocation run. Creating an allocation run records the result for use by the rest of the lifecycle.
 
 ## Candidate eligibility
 
@@ -42,7 +40,7 @@ PostgreSQL/PostGIS performs candidate discovery within the configured distance o
 - a previous declined offer for the same ride; and
 - a previous expired offer for the same ride.
 
-A rejected candidate can have multiple rejection reasons. Allocation runs persist all applicable reasons for discovered candidates rather than stopping at the first failed rule.
+Allocation runs record all applicable rejection reasons for each candidate.
 
 `GET /api/v1/ride-requests/{id}/eligible-drivers` is a read-only diagnostic view. It returns the currently eligible drivers in ranked order but does not create an allocation run or persist candidate evidence.
 
@@ -68,39 +66,35 @@ An allocation run persists:
 - all rejection reasons for each ineligible candidate; and
 - the source offer when the run was created as a replacement.
 
-This evidence represents the dispatch decision at that point in time. Reading it later does not reevaluate candidates against current driver or ride state.
+Allocation runs retain the original decision evidence without reevaluating candidates when retrieved.
 
 ## Offers, override, and replacement
 
 ### Recommended offers
 
-An allocation run can have at most one offer. Across all allocation runs for a ride, at most one offer can be actionable: `PENDING` offers that have not expired and all `ACCEPTED` offers block another offer, while `DECLINED`, `WITHDRAWN`, and `EXPIRED` offers do not. When a pending offer's TTL has elapsed, offer creation and other relevant offer workflows persist it as expired before continuing. The offer TTL is configurable, and each offer stores its creation and expiry timestamps.
+Each allocation run can have at most one offer. An unexpired `PENDING` offer or an `ACCEPTED` offer blocks further offers for the same ride. `DECLINED`, `WITHDRAWN`, and `EXPIRED` offers do not. Accepted offers remain blocking after assignment cancellation or completion.
 
-Offer status is protected by optimistic concurrency. Competing transitions cannot overwrite each other; a losing request reloads and returns the authoritative persisted state. An accepted offer remains blocking even if its assignment is later cancelled or completed.
+Relevant offer workflows mark elapsed pending offers as expired. Offer lifetime is configurable, and creation and expiry timestamps are stored. Optimistic concurrency protects status transitions; a losing request reloads and returns the persisted state.
 
 ### Dispatcher override
 
-A dispatcher override changes which already-eligible candidate receives the offer; it does not bypass eligibility. The selected driver must:
+A dispatcher may select a different driver recorded as eligible in the allocation run. Eligibility is based on that run's saved evaluation, not a new evaluation at offer creation.
 
-- appear in the allocation run's persisted candidate evidence;
-- have been eligible in that evidence; and
-- differ from the normal recommended driver.
-
-A non-empty reason is required and persisted after trimming. The recommendation, selected driver, selection mode, reason, candidate evidence, and timestamps retain the decision context. The service does not record an operator identity.
+A non-empty, trimmed reason is required and stored. The original recommendation, selected driver, selection mode, reason, candidate evidence, and timestamps are retained. The service does not record an operator identity.
 
 ### Replacement dispatch
 
-A declined or expired offer can initiate replacement dispatch. A pending offer whose expiry time has elapsed is first marked expired by this workflow. The replacement allocation run links to its source offer and reuses the normal eligibility and ranking process.
+Declined or expired offers can initiate replacement dispatch using the same eligibility and ranking process. Elapsed pending offers are marked expired first.
 
-A unique source-offer relationship makes retries converge on the existing replacement run. If that run has a recommendation, the workflow likewise reuses or creates its single offer. Repeating the process from a later failed offer can form a replacement chain.
+Each replacement run links uniquely to its source offer. Retries reuse the existing run and, if it has a recommendation, reuse or create its single offer. Later failed offers can form a replacement chain.
 
 ## Scheduled rides
 
-Ride timing is either `IMMEDIATE` or `SCHEDULED`. An immediate ride has no requested pickup time. A scheduled ride requires one.
+`IMMEDIATE` rides have no requested pickup time; `SCHEDULED` rides require one.
 
 Scheduled dispatch must be activated explicitly before an allocation run can be created. Activation is persisted and is allowed from the requested pickup time minus the configured lead time through the pickup timestamp. The default lead time is 15 minutes. Concurrent activation attempts are retry-safe and return the persisted activation when another request wins the race.
 
-New scheduled allocation runs and offers are rejected after the pickup timestamp. Replacement dispatch cannot initiate a new replacement after this cutoff, but previously created replacements remain retrievable, and operations admitted before the cutoff may finish. The pickup timestamp itself remains an allowed boundary.
+New scheduled allocation runs, offers, and replacement runs cannot be initiated after the pickup timestamp. The pickup timestamp itself is allowed. Existing replacement offers remain retrievable, and operations admitted before the cutoff may finish.
 
 The eligible-driver preview remains available independently of activation. It evaluates candidates for the scheduled ride's occupancy window without creating an allocation run.
 
@@ -112,7 +106,11 @@ Assignments can be created only from accepted offers. Their occupancy window is 
 - scheduled rides start at the requested pickup time; and
 - the ride's estimated trip duration determines the end time.
 
-An `ACTIVE` assignment reserves the driver's schedule. A `COMPLETED` assignment retains the completed ride but no longer reserves the driver's schedule. A `CANCELLED` assignment releases its persisted driver and ride reservation, allowing the driver to serve another ride. Cancellation does not override the accepted-offer policy: the accepted offer still blocks another offer for its ride.
+| Status | Schedule behavior |
+| --- | --- |
+| `ACTIVE` | Reserves the driver's occupancy window |
+| `COMPLETED` | Releases the driver's schedule but retains the completed assignment |
+| `CANCELLED` | Releases the driver's schedule and the ride's non-cancelled assignment slot |
 
 PostgreSQL protects active driver schedules with an exclusion constraint over overlapping `tstzrange` values. Application prechecks provide an early conflict response, while the database constraint handles concurrent writes. The database also enforces one assignment per offer and at most one non-cancelled assignment per ride.
 
@@ -123,15 +121,13 @@ EF Core mappings and PostgreSQL constraints enforce the central persistence rule
 - driver locations use PostGIS `geography(Point, 4326)` with a GiST spatial index;
 - an exclusion constraint prevents overlapping active assignment windows for a driver;
 - each driver can have at most one vehicle;
-- each allocation run can have at most one offer;
-- each ride can have at most one `PENDING` or `ACCEPTED` offer across allocation runs;
-- each offer can have at most one assignment;
-- each ride can have at most one non-cancelled assignment;
+- unique indexes allow at most one offer per allocation run and one persisted `PENDING` or `ACCEPTED` offer per ride;
+- unique indexes allow at most one assignment per offer and one non-cancelled assignment per ride;
 - each source offer can have at most one replacement allocation run;
 - eligible candidate evaluations require a positive rank, while rejected candidates cannot have one;
 - offer status, resolution timestamps, selection mode, and override reasons must remain consistent;
 - scheduled pickup and activation timestamps must match the ride timing rules; and
-- offer status, assignment status, scheduled activation, driver approval, and driver operational status act as concurrency tokens for their respective updates. Driver status updates retry once after a concurrent write and otherwise return a conflict.
+- optimistic concurrency protects offer status, assignment status, scheduled activation, driver approval, and operational status. Driver status updates retry once before returning a conflict.
 
 ## Architecture
 
@@ -161,63 +157,28 @@ Domain          -> no project dependencies
 - **Infrastructure** implements EF Core persistence with PostgreSQL and PostGIS.
 - **API** provides HTTP transport, dependency composition, health checks, and OpenAPI generation.
 
-## API overview
+## Key endpoints
 
-JSON enum values use uppercase snake case, such as `LONGEST_IDLE` and `DISPATCHER_OVERRIDE`.
-
-### Ride requests and dispatch
+All routes below use the `/api/v1` prefix. JSON enum values use uppercase snake case, such as `LONGEST_IDLE` and `DISPATCHER_OVERRIDE`.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/v1/ride-requests` | Create a ride request |
-| `GET` | `/api/v1/ride-requests` | List ride requests |
-| `GET` | `/api/v1/ride-requests/{id}` | Get a ride request |
-| `POST` | `/api/v1/ride-requests/{id}/activate-dispatch` | Activate a scheduled ride for dispatch |
-| `GET` | `/api/v1/ride-requests/{id}/eligible-drivers` | Preview ranked eligible drivers |
-| `POST` | `/api/v1/ride-requests/{id}/allocation-runs` | Create and persist an allocation decision |
-| `GET` | `/api/v1/allocation-runs/{id}` | Get an allocation run |
-| `GET` | `/api/v1/allocation-runs/{id}/candidate-evaluations` | Get persisted candidate evidence |
+| `GET` | `/ride-requests/{id}/eligible-drivers` | Preview ranked candidates |
+| `POST` | `/ride-requests/{id}/allocation-runs` | Record an allocation decision |
+| `GET` | `/allocation-runs/{id}/candidate-evaluations` | Inspect decision evidence |
+| `POST` | `/allocation-runs/{id}/offers` | Offer the ride to the recommended driver |
+| `POST` | `/allocation-runs/{id}/offers/override` | Select another recorded eligible driver |
+| `POST` | `/offers/{id}/replacement-dispatch` | Dispatch a replacement after decline or expiry |
+| `POST` | `/offers/{id}/assignments` | Create an assignment from an accepted offer |
+| `POST` | `/ride-requests/{id}/activate-dispatch` | Activate scheduled dispatch |
 
-The eligible-driver and allocation-run creation routes accept an optional `rankingPolicy` query parameter. The default is `NEAREST`.
+The eligible-driver and allocation-run creation routes accept an optional `rankingPolicy` query parameter (default: `NEAREST`).
 
-### Offers and assignments
-
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/v1/allocation-runs/{id}/offers` | Offer the ride to the recommended driver |
-| `POST` | `/api/v1/allocation-runs/{id}/offers/override` | Offer the ride to another persisted eligible candidate |
-| `GET` | `/api/v1/offers/{id}` | Get an offer |
-| `POST` | `/api/v1/offers/{id}/accept` | Accept a pending offer |
-| `POST` | `/api/v1/offers/{id}/decline` | Decline a pending offer |
-| `POST` | `/api/v1/offers/{id}/withdraw` | Withdraw a pending offer |
-| `POST` | `/api/v1/offers/{id}/replacement-dispatch` | Dispatch a replacement after decline or expiry |
-| `POST` | `/api/v1/offers/{id}/assignments` | Create an assignment from an accepted offer |
-| `GET` | `/api/v1/assignments/{id}` | Get an assignment |
-| `POST` | `/api/v1/assignments/{id}/complete` | Complete an active assignment |
-| `POST` | `/api/v1/assignments/{id}/cancel` | Cancel an active assignment |
-
-### Driver and passenger setup
-
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/v1/drivers` | Create a driver |
-| `GET` | `/api/v1/drivers` | List drivers |
-| `GET` | `/api/v1/drivers/{id}` | Get a driver |
-| `PUT` | `/api/v1/drivers/{id}/approval` | Change driver approval |
-| `PUT` | `/api/v1/drivers/{id}/operational-status` | Change operational status |
-| `POST` | `/api/v1/drivers/{id}/vehicle` | Register the driver's vehicle |
-| `GET` | `/api/v1/drivers/{id}/vehicle` | Get the driver's vehicle |
-| `PUT` | `/api/v1/drivers/{id}/location` | Update driver location |
-| `GET` | `/api/v1/drivers/{id}/location` | Get driver location |
-| `GET` | `/api/v1/drivers/nearby` | Search for drivers by location and radius |
-| `PUT` | `/api/v1/drivers/{id}/financial-standing` | Update commission balance |
-| `GET` | `/api/v1/drivers/{id}/financial-standing` | Get commission standing |
-| `POST` | `/api/v1/passengers` | Create a passenger |
-| `GET` | `/api/v1/passengers/{id}` | Get a passenger |
+For the complete API, including driver, passenger, vehicle, and status-management endpoints, see the generated OpenAPI document at `/openapi/v1.json` when running locally in Development.
 
 ## Configuration
 
-The following values are defaults from `src/RideDispatch.Api/appsettings.json`, not universal business rules:
+Defaults from `src/RideDispatch.Api/appsettings.json`:
 
 | Setting | Default | Meaning |
 | --- | ---: | --- |
@@ -258,15 +219,13 @@ Health endpoints are available independently of the OpenAPI document:
 
 The repository contains focused unit tests and PostgreSQL/PostGIS integration tests. Integration tests use Testcontainers to start real database instances. The CI workflow builds the solution and runs the two suites separately.
 
-The currently verified suite contains 287 unit tests and 59 PostgreSQL integration tests, for 346 tests in total.
-
 ```bash
 dotnet test tests/RideDispatch.UnitTests/RideDispatch.UnitTests.csproj
 dotnet test tests/RideDispatch.IntegrationTests/RideDispatch.IntegrationTests.csproj
 ```
 
-## Design boundaries
+## Scope and limitations
 
-This service focuses on dispatch and allocation correctness rather than the full ride lifecycle. Authentication and authorization, routing and ETA calculation, and live driver transport or streaming are not implemented here.
+This service covers dispatch and allocation, not the full ride lifecycle. Authentication, authorization, routing, ETA calculation, and live driver transport or streaming are not implemented. Do not expose the API publicly without access controls.
 
-There is no background offer-expiry worker. Expiry is evaluated when offer creation, an offer transition, or replacement dispatch needs the current offer state. The service uses direct application orchestration and database constraints; it does not introduce an event bus or separate services for the current consistency boundaries.
+There is no background offer-expiry worker. Expiry is evaluated when offer creation, an offer transition, or replacement dispatch needs the current offer state.
